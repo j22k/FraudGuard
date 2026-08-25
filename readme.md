@@ -60,32 +60,39 @@ fraudguard/
 
 ## Status
 
-🚧 Active build. Currently in infra scaffolding + dataset selection phase.
+🚧 Active build. Infrastructure & SageMaker Pipeline complete. Entering Phase 4 (Bedrock explainability).
 
 - [x] Architecture finalized
-- [x] Terraform module structure scaffolded
-- [ ] Dataset + feature list locked
-- [ ] Local XGBoost training + eval
-- [ ] SageMaker Pipeline port
+- [x] Terraform module structure scaffolded & provisioned (S3, IAM, DynamoDB, EventBridge, SageMaker)
+- [x] Dataset + feature list locked (64 features)
+- [x] Local XGBoost training + eval (Test AUC-PR: 0.4208, ROC-AUC: 0.8754)
+- [x] SageMaker Pipeline port (ProcessingStep, TrainingStep, ConditionStep, RegisterModel)
 - [ ] Lambda + Bedrock Haiku standalone test
-- [ ] EventBridge wiring
+- [ ] EventBridge wiring to Bedrock Lambda
 - [ ] End-to-end test (synthetic txn → full pipeline)
 - [ ] Cost report + LinkedIn writeup
 
+See [docs/status.md](docs/status.md) for full infrastructure details and resource ARNs.
+
 ## Setup
 
-> Infra not yet provisioned — placeholder until Terraform modules are complete.
-
 ```bash
-# local dev
-python -m venv venv && source venv/bin/activate
+# 1. Local dev environment
+python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\Activate.ps1 on Windows
 pip install -r requirements.txt
 
-# infra (once ready)
+# 2. Provision infrastructure (generates .env automatically)
 cd infra/terraform
 terraform init
-terraform plan
+terraform apply
+cd ../..
+
+# 3. Run the SageMaker pipeline
+.\scripts\run_pipeline.ps1          # Windows (PowerShell)
+bash scripts/run_pipeline.sh        # Linux / macOS / CI
 ```
+
+The `terraform apply` step auto-generates a `.env` file at the project root with all required environment variables (role ARNs, bucket name, etc.). The wrapper scripts load this file before invoking the pipeline. See [`.env.example`](.env.example) for the full list of variables.
 
 ## Why This Project
 
