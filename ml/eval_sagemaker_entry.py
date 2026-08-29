@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 FraudGuard — SageMaker Evaluation Entrypoint
 Evaluates the trained XGBoost model on the test dataset.

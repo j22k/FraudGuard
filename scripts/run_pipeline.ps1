@@ -38,4 +38,5 @@ Write-Host "  FRAUDGUARD_S3_BUCKET  = $env:FRAUDGUARD_S3_BUCKET"
 Write-Host ""
 
 # Run the pipeline
+Set-Location $ProjectRoot
 python (Join-Path $ProjectRoot 'ml\sagemaker_pipeline.py')

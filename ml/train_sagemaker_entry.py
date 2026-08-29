@@ -95,12 +95,13 @@ if __name__ == '__main__':
         json.dump(results, f, indent=2)
     print(f"Saved evaluation results to {eval_filepath}")
 
-    # Save model artifacts and feature list to SM_MODEL_DIR
+    # Save model artifact to SM_MODEL_DIR
     model_filepath = os.path.join(args.model_dir, 'xgb_fraud_v1.json')
     model.save_model(model_filepath)
     print(f"Model saved to {model_filepath}")
 
-    feature_filepath = os.path.join(args.model_dir, 'feature_list.txt')
+    # Save feature list to output_data_dir (prevents serving container from trying to load text file as model)
+    feature_filepath = os.path.join(args.output_data_dir, 'feature_list.txt')
     with open(feature_filepath, 'w') as f:
         f.write('\n'.join(X_train.columns.tolist()))
     print(f"Feature list saved to {feature_filepath}")

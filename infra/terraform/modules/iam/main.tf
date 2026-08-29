@@ -14,9 +14,8 @@ data "aws_iam_policy_document" "sagemaker_assume_role" {
 }
 
 resource "aws_iam_role" "sagemaker_execution_role" {
-  name                 = "${var.project_name}-sagemaker-execution-role-${var.environment}"
-  assume_role_policy   = data.aws_iam_policy_document.sagemaker_assume_role.json
-  permissions_boundary = "arn:aws:iam::aws:policy/AmazonDataZoneSageMakerEnvironmentRolePermissionsBoundary"
+  name               = "${var.project_name}-sagemaker-execution-role-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.sagemaker_assume_role.json
 
   tags = merge(
     var.tags,
@@ -151,9 +150,8 @@ data "aws_iam_policy_document" "eventbridge_assume_role" {
 }
 
 resource "aws_iam_role" "eventbridge_sagemaker_role" {
-  name                 = "${var.project_name}-eventbridge-sagemaker-role-${var.environment}"
-  assume_role_policy   = data.aws_iam_policy_document.eventbridge_assume_role.json
-  permissions_boundary = "arn:aws:iam::aws:policy/AmazonDataZoneSageMakerEnvironmentRolePermissionsBoundary"
+  name               = "${var.project_name}-eventbridge-sagemaker-role-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.eventbridge_assume_role.json
 
   tags = merge(
     var.tags,
@@ -204,9 +202,8 @@ data "aws_iam_policy_document" "lambda_assume_role" {
 }
 
 resource "aws_iam_role" "lambda_execution_role" {
-  name                 = "${var.project_name}-lambda-execution-role-${var.environment}"
-  assume_role_policy   = data.aws_iam_policy_document.lambda_assume_role.json
-  permissions_boundary = "arn:aws:iam::aws:policy/AmazonDataZoneSageMakerEnvironmentRolePermissionsBoundary"
+  name               = "${var.project_name}-lambda-execution-role-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
 
   tags = merge(
     var.tags,
@@ -248,6 +245,17 @@ data "aws_iam_policy_document" "lambda_policy_doc" {
     ]
     resources = [
       "arn:aws:bedrock:*::foundation-model/anthropic.claude-3-haiku-*"
+    ]
+  }
+
+  statement {
+    sid    = "S3ReadInferenceOutput"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject"
+    ]
+    resources = [
+      "${var.s3_bucket_arn}/*"
     ]
   }
 }

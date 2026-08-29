@@ -28,7 +28,22 @@ output "eventbridge_s3_trigger_rule" {
   description = "EventBridge Rule name that triggers the SageMaker Pipeline"
 }
 
+output "eventbridge_inference_trigger_rule" {
+  value       = module.eventbridge.inference_trigger_rule_name
+  description = "EventBridge Rule name that triggers the Lambda Explainability function"
+}
+
 output "lambda_execution_role_arn" {
   value       = module.iam.lambda_execution_role_arn
   description = "Lambda Execution Role ARN for Bedrock explainability"
+}
+
+output "lambda_function_name" {
+  value       = module.lambda.function_name
+  description = "Name of the Lambda explainability function (use as LAMBDA_FUNCTION_NAME)"
+}
+
+output "lambda_function_arn" {
+  value       = module.lambda.function_arn
+  description = "ARN of the Lambda explainability function"
 }

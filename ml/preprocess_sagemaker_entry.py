@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """
 FraudGuard — SageMaker Processing Entrypoint
 Self-contained script to run on SageMaker SKLearnProcessor.

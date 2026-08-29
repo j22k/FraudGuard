@@ -25,6 +25,12 @@ variable "eventbridge_role_arn" {
   description = "IAM Role ARN for EventBridge to invoke SageMaker Pipeline"
 }
 
+variable "lambda_function_arn" {
+  type        = string
+  description = "ARN of the Lambda function to trigger on batch transform inference output"
+  default     = ""
+}
+
 variable "tags" {
   type        = map(string)
   description = "Resource tags"

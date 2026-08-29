@@ -60,39 +60,84 @@ fraudguard/
 
 ## Status
 
-🚧 Active build. Infrastructure & SageMaker Pipeline complete. Entering Phase 4 (Bedrock explainability).
-
 - [x] Architecture finalized
-- [x] Terraform module structure scaffolded & provisioned (S3, IAM, DynamoDB, EventBridge, SageMaker)
-- [x] Dataset + feature list locked (64 features)
-- [x] Local XGBoost training + eval (Test AUC-PR: 0.4208, ROC-AUC: 0.8754)
-- [x] SageMaker Pipeline port (ProcessingStep, TrainingStep, ConditionStep, RegisterModel)
-- [ ] Lambda + Bedrock Haiku standalone test
-- [ ] EventBridge wiring to Bedrock Lambda
-- [ ] End-to-end test (synthetic txn → full pipeline)
-- [ ] Cost report + LinkedIn writeup
+- [x] Terraform modular infrastructure deployed (S3, IAM, DynamoDB, Model Registry, EventBridge, Lambda)
+- [x] Dataset & feature engineering schema locked (64 features)
+- [x] Local XGBoost training & baseline validation (Test AUC-PR: 0.4208, ROC-AUC: 0.8754)
+- [x] SageMaker Pipeline workflow (ProcessingStep → TrainingStep → Evaluate → ConditionStep → RegisterModel)
+- [x] Lambda & Bedrock Claude 3.5 Haiku explainability handler (`lambda/handler.py`, `lambda/bedrock_client.py`)
+- [x] EventBridge rule for inference output triggering Lambda
+- [x] Unit test suite for explainability handler with mocked AWS clients (`tests/test_handler.py`)
+- [x] End-to-end live batch run & validation (`88,581` inferences, `1,271` fraud cases detected, DynamoDB populated)
+- [x] Cost defense report & portfolio writeup
 
-See [docs/status.md](docs/status.md) for full infrastructure details and resource ARNs.
+---
 
-## Setup
+## Complete End-to-End Execution Guide
 
+### 1. Local Environment Setup
 ```bash
-# 1. Local dev environment
-python -m venv .venv && source .venv/bin/activate   # or .venv\Scripts\Activate.ps1 on Windows
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate         # Linux / macOS
+# or: .venv\Scripts\Activate.ps1   # Windows PowerShell
 
-# 2. Provision infrastructure (generates .env automatically)
+pip install -r requirements.txt
+```
+
+### 2. Pre-package Lambda & Deploy Infrastructure
+Before initial `terraform apply`, package the Lambda archive, then apply the infrastructure:
+```powershell
+# Windows PowerShell
+Compress-Archive -Path lambda\handler.py, lambda\bedrock_client.py -DestinationPath lambda\lambda_package.zip -Force
+
 cd infra/terraform
 terraform init
 terraform apply
 cd ../..
-
-# 3. Run the SageMaker pipeline
-.\scripts\run_pipeline.ps1          # Windows (PowerShell)
-bash scripts/run_pipeline.sh        # Linux / macOS / CI
 ```
 
-The `terraform apply` step auto-generates a `.env` file at the project root with all required environment variables (role ARNs, bucket name, etc.). The wrapper scripts load this file before invoking the pipeline. See [`.env.example`](.env.example) for the full list of variables.
+*(This provisions all AWS resources and auto-generates the root `.env` file containing resource ARNs and bucket IDs).*
+
+### 3. Run Unit Tests Locally
+```bash
+python -m pytest tests/test_handler.py -v
+```
+
+### 4. Upload Data & Run SageMaker Pipeline
+Upload raw data to S3 (EventBridge will auto-trigger the training pipeline, or you can run the pipeline directly):
+```powershell
+# Upload raw data
+.\scripts\upload_data.ps1        # or: bash scripts/upload_data.sh
+
+# Run pipeline directly
+.\scripts\run_pipeline.ps1       # or: bash scripts/run_pipeline.sh
+```
+
+### 5. Approve Model & Run Batch Transform
+1. Once the training pipeline completes, go to **AWS Console $\rightarrow$ SageMaker $\rightarrow$ Model Registry $\rightarrow$ `fraudguard-model-group`**.
+2. Select the new model version $\rightarrow$ **Update approval status** $\rightarrow$ Set to **`Approved`**.
+3. Run the batch transform job (auto-discovers latest preprocessed dataset from S3):
+```powershell
+.\scripts\run_batch_transform.ps1 -Wait
+```
+
+### 6. Verify Results in DynamoDB
+When batch transform finishes, scored predictions land in `s3://$bucket/inference-output/`:
+1. EventBridge triggers `fraudguard-explainability-dev`.
+2. Lambda filters high-risk transactions (`fraud_score > 0.9`).
+3. Amazon Bedrock (Claude 3 Haiku) generates plain-English fraud risk summaries.
+4. Results are stored in DynamoDB table `fraudguard-flagged-transactions-dev`.
+
+---
+
+## Scripts Reference
+
+| Script (PowerShell) | Script (Bash) | Purpose |
+|---|---|---|
+| `scripts/upload_data.ps1` | `scripts/upload_data.sh` | Uploads local raw dataset to S3 bucket configured in `.env`. |
+| `scripts/run_pipeline.ps1` | `scripts/run_pipeline.sh` | Submits and starts the SageMaker training pipeline DAG. |
+| `scripts/run_batch_transform.ps1` | `scripts/run_batch_transform.sh` | Fetches the latest approved model from Model Registry and runs batch inference. |
+| `scripts/deploy_lambda.ps1` | `scripts/deploy_lambda.sh` | Packages and updates the Lambda function code without re-running Terraform. |
 
 ## Why This Project
 

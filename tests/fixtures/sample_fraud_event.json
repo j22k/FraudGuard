@@ -1,0 +1,36 @@
+{
+  "version": "0",
+  "id": "e4b6c3d2-8f1a-4e9b-a3c7-1234567890ab",
+  "detail-type": "Object Created",
+  "source": "aws.s3",
+  "account": "123456789012",
+  "time": "2026-08-25T10:00:00Z",
+  "region": "us-east-1",
+  "resources": [
+    "arn:aws:s3:::fraudguard-test-bucket"
+  ],
+  "detail": {
+    "version": "0",
+    "bucket": {
+      "name": "fraudguard-test-bucket"
+    },
+    "object": {
+      "key": "inference-output/results.csv",
+      "size": 2048,
+      "etag": "0123456789abcdef0123456789abcdef",
+      "sequencer": "0055AED6DCD90281E5"
+    },
+    "request-id": "C3D4E5F6G7H8I9J0",
+    "requester": "123456789012",
+    "destination": {
+      "bucket": {
+        "name": "fraudguard-test-bucket"
+      },
+      "object": {
+        "key": "inference-output/results.csv"
+      }
+    },
+    "source-ip-address": "127.0.0.1",
+    "reason": "PutObject"
+  }
+}

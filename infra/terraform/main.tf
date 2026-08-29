@@ -77,7 +77,22 @@ module "sagemaker" {
 }
 
 # ==============================================================================
-# 5. EventBridge S3 Trigger Module
+# 5. Lambda Module (Phase 4 - Bedrock Haiku Explainability)
+# ==============================================================================
+module "lambda" {
+  source                = "./modules/lambda"
+  function_name         = "${var.project_name}-explainability-${var.environment}"
+  lambda_role_arn       = module.iam.lambda_execution_role_arn
+  dynamodb_table_name   = module.dynamodb.table_name
+  lambda_zip_path       = var.lambda_zip_path != "" ? var.lambda_zip_path : "${path.module}/../../lambda/lambda_package.zip"
+  fraud_score_threshold = var.fraud_score_threshold
+  aws_region            = var.aws_region
+  environment           = var.environment
+  tags                  = var.tags
+}
+
+# ==============================================================================
+# 6. EventBridge S3 Trigger Module
 # ==============================================================================
 module "eventbridge" {
   source                 = "./modules/eventbridge"
@@ -86,5 +101,17 @@ module "eventbridge" {
   s3_bucket_name         = module.s3.bucket_id
   sagemaker_pipeline_arn = local.pipeline_arn
   eventbridge_role_arn   = module.iam.eventbridge_sagemaker_role_arn
+  lambda_function_arn    = module.lambda.function_arn
   tags                   = var.tags
+}
+
+# ==============================================================================
+# 7. Lambda Permission for EventBridge Trigger (lives in root to prevent circular dep)
+# ==============================================================================
+resource "aws_lambda_permission" "allow_eventbridge" {
+  statement_id  = "AllowExecutionFromEventBridge"
+  action        = "lambda:InvokeFunction"
+  function_name = module.lambda.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = module.eventbridge.inference_trigger_rule_arn
 }

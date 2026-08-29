@@ -5,6 +5,7 @@ Run: python ml/sagemaker_pipeline.py  (submits pipeline and starts execution)
 """
 
 import os
+from pathlib import Path
 import sagemaker
 from sagemaker.workflow.pipeline import Pipeline
 from sagemaker.workflow.steps import ProcessingStep, TrainingStep
@@ -13,21 +14,26 @@ from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
 from sagemaker.workflow.functions import JsonGet
 from sagemaker.workflow.parameters import ParameterString, ParameterFloat
 from sagemaker.workflow.properties import PropertyFile
+from sagemaker import image_uris
 from sagemaker.sklearn.processing import SKLearnProcessor
-from sagemaker.processing import ProcessingInput, ProcessingOutput
+from sagemaker.processing import ProcessingInput, ProcessingOutput, ScriptProcessor
 from sagemaker.xgboost.estimator import XGBoost
 from sagemaker.inputs import TrainingInput
 from sagemaker.workflow.step_collections import RegisterModel
 from sagemaker.model_metrics import ModelMetrics, MetricsSource
 
+import boto3
+
 # ---- Config — pull from env/terraform output, NOT hardcoded ----
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REGION = os.environ.get('AWS_REGION', 'us-east-1')
 ROLE_ARN = os.environ['SAGEMAKER_ROLE_ARN']         # from terraform output, no default — fail loud if missing
 BUCKET = os.environ['FRAUDGUARD_S3_BUCKET']          # from terraform output
 PIPELINE_NAME = 'fraudguard-pipeline'
 MODEL_PACKAGE_GROUP = 'fraudguard-model-group'
 
-sagemaker_session = sagemaker.Session(default_bucket=BUCKET)
+boto_session = boto3.Session(region_name=REGION)
+sagemaker_session = sagemaker.Session(boto_session=boto_session, default_bucket=BUCKET)
 
 # ---- Pipeline parameters (overridable at execution time, not code change) ----
 raw_data_s3 = ParameterString(name='RawDataS3Uri', default_value=f's3://{BUCKET}/raw/train_transaction.csv')
@@ -48,7 +54,7 @@ sklearn_processor = SKLearnProcessor(
 processing_step = ProcessingStep(
     name='PreprocessFraudData',
     processor=sklearn_processor,
-    code='ml/preprocess_sagemaker_entry.py',
+    code=Path(os.path.join(BASE_DIR, 'preprocess_sagemaker_entry.py')).as_uri(),
     inputs=[
         ProcessingInput(source=raw_data_s3, destination='/opt/ml/processing/input'),
     ],
@@ -64,7 +70,7 @@ processing_step = ProcessingStep(
 # =====================================================================
 xgb_estimator = XGBoost(
     entry_point='train_sagemaker_entry.py',
-    source_dir='ml/',
+    source_dir=BASE_DIR,
     framework_version='1.7-1',
     role=ROLE_ARN,
     instance_type='ml.m5.xlarge',
@@ -103,6 +109,24 @@ training_step = TrainingStep(
 # =====================================================================
 # STEP 3 — Evaluation (Evaluates model on test set)
 # =====================================================================
+xgb_image_uri = image_uris.retrieve(
+    framework="xgboost",
+    region=REGION,
+    version="1.7-1",
+    py_version="py3",
+    instance_type="ml.m5.xlarge",
+)
+
+xgb_processor = ScriptProcessor(
+    image_uri=xgb_image_uri,
+    command=["python3"],
+    role=ROLE_ARN,
+    instance_type="ml.m5.xlarge",
+    instance_count=1,
+    base_job_name="fraudguard-eval",
+    sagemaker_session=sagemaker_session,
+)
+
 eval_results_file = PropertyFile(
     name="eval_results",
     output_name="evaluation",
@@ -111,8 +135,8 @@ eval_results_file = PropertyFile(
 
 evaluation_step = ProcessingStep(
     name='EvaluateFraudModel',
-    processor=sklearn_processor,
-    code='ml/eval_sagemaker_entry.py',
+    processor=xgb_processor,
+    code=Path(os.path.join(BASE_DIR, 'eval_sagemaker_entry.py')).as_uri(),
     inputs=[
         ProcessingInput(
             source=training_step.properties.ModelArtifacts.S3ModelArtifacts,

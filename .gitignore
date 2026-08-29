@@ -11,6 +11,7 @@ venv/
 .eggs/
 dist/
 build/
+.pytest_cache/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -76,3 +77,5 @@ ml/model_artifacts/*.bin
 # SageMaker — local SDK cache and temp outputs
 .sagemaker/
 sagemaker-*/
+
+.agents

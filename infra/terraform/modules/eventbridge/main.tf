@@ -37,3 +37,38 @@ resource "aws_cloudwatch_event_target" "sagemaker_pipeline" {
     }
   }
 }
+
+# ==============================================================================
+# Rule 2: S3 inference output -> Lambda Explainability Trigger (Phase 4)
+# ==============================================================================
+resource "aws_cloudwatch_event_rule" "s3_inference_output_rule" {
+  name        = "${var.project_name}-s3-inference-trigger-${var.environment}"
+  description = "Triggers FraudGuard Lambda explainability handler when batch transform writes inference output"
+
+  event_pattern = jsonencode({
+    "source" : ["aws.s3"],
+    "detail-type" : ["Object Created"],
+    "detail" : {
+      "bucket" : {
+        "name" : [var.s3_bucket_name]
+      },
+      "object" : {
+        "key" : [{ "prefix" : "inference-output/" }]
+      }
+    }
+  })
+
+  tags = merge(
+    var.tags,
+    {
+      Name        = "${var.project_name}-s3-inference-trigger-${var.environment}"
+      Environment = var.environment
+    }
+  )
+}
+
+resource "aws_cloudwatch_event_target" "lambda_inference_trigger" {
+  rule      = aws_cloudwatch_event_rule.s3_inference_output_rule.name
+  target_id = "TriggerLambdaExplainability"
+  arn       = var.lambda_function_arn
+}

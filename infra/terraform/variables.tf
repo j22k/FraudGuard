@@ -22,6 +22,18 @@ variable "s3_bucket_name" {
   default     = ""
 }
 
+variable "fraud_score_threshold" {
+  type        = string
+  description = "Threshold above which transactions are flagged for Bedrock explanation"
+  default     = "0.9"
+}
+
+variable "lambda_zip_path" {
+  type        = string
+  description = "Path to the packaged Lambda zip file. If empty, defaults to ../../lambda/lambda_package.zip relative to this dir."
+  default     = ""
+}
+
 variable "tags" {
   type        = map(string)
   description = "Common resource tags"
