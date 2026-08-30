@@ -84,17 +84,70 @@ def _format_feature_values(features: Dict[str, Any]) -> Dict[str, str]:
     else:
         hour_str = "Unknown"
 
-    # 3. Product Category
+    # 3. Categoricals (ProductCD, card4, card6, P_emaildomain_bucket, M4, M6)
     product_cd = _extract_categorical_feature(features, "ProductCD", default="Unknown")
-
-    # 4. Card Network
     card4 = _extract_categorical_feature(features, "card4", default="Unknown")
-
-    # 5. Card Type
     card6 = _extract_categorical_feature(features, "card6", default="Unknown")
-
-    # 6. Email Domain Risk
     email_risk = _extract_categorical_feature(features, "P_emaildomain_bucket", default="Unknown")
+    m4_val = _extract_categorical_feature(features, "M4", default="Unknown")
+    m6_val = _extract_categorical_feature(features, "M6", default="Unknown")
+
+    if m6_val.upper() == "F":
+        m6_str = "Failed / Mismatch (M6=F)"
+    elif m6_val.upper() == "T":
+        m6_str = "Passed / Matched (M6=T)"
+    else:
+        m6_str = m6_val
+
+    # 4. Velocity Signal: card1_addr1_count
+    velocity_val = features.get("card1_addr1_count")
+    if velocity_val is not None and str(velocity_val).strip() not in ("", "nan", "None"):
+        try:
+            v_int = int(float(velocity_val))
+            velocity_str = f"{v_int} transactions for card/address combo"
+        except (ValueError, TypeError):
+            velocity_str = str(velocity_val)
+    else:
+        velocity_str = "Unknown"
+
+    # 5. Behavioral Time Deltas & Location (D2, D8, D10, D15, dist1)
+    def _format_num_field(key: str, suffix: str = "") -> str:
+        val = features.get(key)
+        if val is not None and str(val).strip() not in ("", "nan", "None"):
+            try:
+                num = float(val)
+                return f"{num:g}{suffix}"
+            except (ValueError, TypeError):
+                return f"{val}{suffix}"
+        return "Not specified"
+
+    d2_str = _format_num_field("D2", " days")
+    d8_str = _format_num_field("D8", " days")
+    d10_str = _format_num_field("D10", " days")
+    d15_str = _format_num_field("D15", " days")
+    dist1_str = _format_num_field("dist1", " miles")
+
+    # 6. High-Variance Vesta Fraud Anomaly Flags (V45, V158, V189, V201, V228, V244, V257, V258)
+    v_flags = []
+    for v_key in ["V45", "V158", "V189", "V201", "V228", "V244", "V257", "V258"]:
+        v_val = features.get(v_key)
+        if v_val is not None and str(v_val).strip() not in ("", "nan", "None"):
+            try:
+                num = float(v_val)
+                if num != 0:
+                    v_flags.append(f"{v_key}={num:g}")
+            except (ValueError, TypeError):
+                v_flags.append(f"{v_key}={v_val}")
+    v_flags_str = ", ".join(v_flags) if v_flags else "None / Baseline"
+
+    # 7. Missing value indicators summary
+    missing_flags = []
+    for null_key in ["dist1_isnull", "addr1_isnull", "D2_isnull", "D10_isnull", "D15_isnull", "V258_isnull"]:
+        val = features.get(null_key)
+        if val is not None:
+            if str(val).strip().lower() in ("true", "1", "1.0"):
+                missing_flags.append(null_key.replace("_isnull", ""))
+    missing_str = ", ".join(missing_flags) + " missing" if missing_flags else "All key fields present"
 
     return {
         "TransactionAmt": amt_str,
@@ -103,6 +156,16 @@ def _format_feature_values(features: Dict[str, Any]) -> Dict[str, str]:
         "card4": card4,
         "card6": card6,
         "P_emaildomain_bucket": email_risk,
+        "M4": m4_val,
+        "M6": m6_str,
+        "card1_addr1_count": velocity_str,
+        "D2": d2_str,
+        "D8": d8_str,
+        "D10": d10_str,
+        "D15": d15_str,
+        "dist1": dist1_str,
+        "v_flags": v_flags_str,
+        "missing_fields": missing_str,
     }
 
 
@@ -130,21 +193,35 @@ def explain(
     prompt = (
         f"Transaction ID: {txn_id}\n"
         f"Fraud Probability Score: {fraud_score:.4f} (Threshold: > 0.90)\n\n"
-        f"Key Features:\n"
-        f"- Transaction Amount: {formatted_features['TransactionAmt']}\n"
-        f"- Hour of Day (UTC): {formatted_features['hour_of_day']}\n"
-        f"- Product Category: {formatted_features['ProductCD']}\n"
-        f"- Card Network: {formatted_features['card4']}\n"
-        f"- Card Type: {formatted_features['card6']}\n"
-        f"- Email Domain Risk: {formatted_features['P_emaildomain_bucket']}\n\n"
-        f"Please generate a 2-3 sentence plain-English fraud risk explanation for the operations team."
+        f"TRANSACTION RISK ATTRIBUTES:\n"
+        f"1. Basic Transaction Metrics:\n"
+        f"   - Amount: {formatted_features['TransactionAmt']}\n"
+        f"   - Hour of Day (UTC): {formatted_features['hour_of_day']}\n"
+        f"   - Product Category: {formatted_features['ProductCD']}\n"
+        f"   - Card Network: {formatted_features['card4']}\n"
+        f"   - Card Type: {formatted_features['card6']}\n\n"
+        f"2. Identity & Match Verification:\n"
+        f"   - Email Domain Risk: {formatted_features['P_emaildomain_bucket']}\n"
+        f"   - Address Match (M6): {formatted_features['M6']}\n"
+        f"   - Match Rule Profile (M4): {formatted_features['M4']}\n\n"
+        f"3. Velocity & Behavioral Signals:\n"
+        f"   - Transaction Frequency: {formatted_features['card1_addr1_count']}\n"
+        f"   - Days Since Prior Transaction (D2): {formatted_features['D2']}\n"
+        f"   - Days Since Account Activity (D15): {formatted_features['D15']}\n"
+        f"   - Location Distance (dist1): {formatted_features['dist1']}\n\n"
+        f"4. Anomaly Risk Flags:\n"
+        f"   - Vesta Anomaly Scores: {formatted_features['v_flags']}\n"
+        f"   - Missing Field Flags: {formatted_features['missing_fields']}\n\n"
+        f"Please generate a structured, plain-English fraud risk explanation (3-4 sentences) for the operations team. "
+        f"State the primary risk drivers and recommend an immediate operational action."
     )
 
     system_prompt = (
         "You are FraudGuard, an automated financial fraud detection analyst. "
-        "Provide a concise, clear 2-3 sentence explanation of why a transaction was flagged "
-        "as high risk based on its features. Focus on specific anomalies (e.g. unusual amount, "
-        "off-peak hour, high-risk email domain, card type). Be objective and professional."
+        "Provide a concise, clear 3-4 sentence risk analysis of why a transaction was flagged "
+        "as high risk based on its features across Basic Metrics, Identity Match, Velocity, "
+        "Behavioral Deltas, and Anomaly Risk Flags. State primary risk drivers and recommend "
+        "an immediate operational action. Be objective, precise, and professional."
     )
 
     payload = {
@@ -199,14 +276,18 @@ def explain(
 
     # Fallback explanation if Bedrock model access is restricted
     amt_str = str(formatted_features.get('TransactionAmt', '$0.00'))
-    hour_str = f"{formatted_features.get('hour_of_day', 'N/A')}:00 UTC"
+    hour_str = f"{formatted_features.get('hour_of_day', 'N/A')}"
     domain_str = formatted_features.get('P_emaildomain_bucket', 'unknown')
     card_str = f"{formatted_features.get('card4', 'card')} {formatted_features.get('card6', '')}".strip()
+    m6_str = formatted_features.get('M6', 'unknown')
+    velocity_str = formatted_features.get('card1_addr1_count', 'unknown')
 
     fallback_explanation = (
         f"Transaction {txn_id} was flagged with critical fraud score {fraud_score:.2f}. "
         f"Key risk indicators include high-value transaction of {amt_str} executed during "
-        f"off-peak hours ({hour_str}) on a {card_str} with {domain_str} email risk profile."
+        f"off-peak hours ({hour_str}) on a {card_str} with {domain_str} email risk profile, "
+        f"address match status '{m6_str}', and velocity indicator '{velocity_str}'."
     )
     logger.info("Generated heuristic explanation for transaction %s: %s", txn_id, fallback_explanation)
     return fallback_explanation
+

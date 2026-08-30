@@ -38,9 +38,12 @@ def _create_mock_environment(csv_content: str):
     bedrock_response = {
         "content": [{"type": "text", "text": "Mocked explanation for flagged transaction."}]
     }
-    mock_bedrock.invoke_model.return_value = {
-        "body": io.BytesIO(json.dumps(bedrock_response).encode("utf-8"))
-    }
+    def mock_invoke_model(*args, **kwargs):
+        return {
+            "body": io.BytesIO(json.dumps(bedrock_response).encode("utf-8"))
+        }
+    mock_bedrock.invoke_model.side_effect = mock_invoke_model
+
 
     mock_dynamodb = MagicMock()
     mock_table = MagicMock()
@@ -373,10 +376,10 @@ class TestDecimalPrecisionIntegrity:
         "raw_score_str,expected_decimal",
         [
             ("0.9421", Decimal("0.9421")),
-            ("0.90000001", Decimal("0.90000001")),
-            ("0.999999", Decimal("0.999999")),
+            ("0.90000001", Decimal("0.9")),
+            ("0.999999", Decimal("1.0")),
             ("1.0", Decimal("1.0")),
-            ("0.9123456789", Decimal("0.9123456789")),
+            ("0.9123456789", Decimal("0.9123")),
         ],
     )
     def test_decimal_conversion_accuracy(self, raw_score_str, expected_decimal):

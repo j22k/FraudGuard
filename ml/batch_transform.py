@@ -50,9 +50,9 @@ def get_latest_approved_model_package(sm_client: boto3.client, group_name: str) 
     if not packages:
         raise RuntimeError(
             f"No approved models found in group '{group_name}'.\n"
-            f"  → Run the SageMaker pipeline first: python ml/sagemaker_pipeline.py\n"
-            f"  → Then approve the model in the SageMaker console:\n"
-            f"     Model Registry → {group_name} → (select version) → Update approval status → Approved"
+            f"  -> Run the SageMaker pipeline first: python ml/sagemaker_pipeline.py\n"
+            f"  -> Then approve the model in the SageMaker console:\n"
+            f"     Model Registry -> {group_name} -> (select version) -> Update approval status -> Approved"
         )
     arn = packages[0]['ModelPackageArn']
     created = packages[0]['CreationTime'].strftime('%Y-%m-%d %H:%M UTC')
@@ -142,7 +142,10 @@ if __name__ == '__main__':
     sm_session     = sagemaker.Session(boto_session=boto_session, default_bucket=BUCKET)
     job_name       = f"fraudguard-transform-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
-    raw_test_s3_uri = args.input_s3 if args.input_s3 else get_latest_test_s3_uri(s3_client, BUCKET)
+    if args.input_s3 and args.input_s3.startswith("s3://"):
+        raw_test_s3_uri = args.input_s3
+    else:
+        raw_test_s3_uri = get_latest_test_s3_uri(s3_client, BUCKET)
 
     print(f"\n{'='*60}")
     print(f"FraudGuard Batch Transform")
@@ -169,8 +172,8 @@ if __name__ == '__main__':
     )
 
     print(f"\n5. Submitting batch transform job: {job_name}")
-    print(f"   Input  → {clean_inference_s3}")
-    print(f"   Output → {OUTPUT_PATH}")
+    print(f"   Input  -> {clean_inference_s3}")
+    print(f"   Output -> {OUTPUT_PATH}")
     print(f"   Instance: {INSTANCE_TYPE}")
 
     transformer.transform(
@@ -188,10 +191,10 @@ if __name__ == '__main__':
         print(f"Transform job complete.")
     else:
         print(f"Transform job submitted (running async).")
-        print(f"Monitor: AWS Console → SageMaker → Batch transform jobs → {job_name}")
+        print(f"Monitor: AWS Console -> SageMaker -> Batch transform jobs -> {job_name}")
     print(f"\nWhen job finishes:")
-    print(f"  → Output lands at {OUTPUT_PATH}")
-    print(f"  → EventBridge fires on inference-output/ prefix")
-    print(f"  → Lambda reads results, calls Bedrock for fraud_score > 0.9 rows")
-    print(f"  → Results written to DynamoDB table: {os.environ.get('FRAUDGUARD_DYNAMODB_TABLE', 'fraudguard-flagged-transactions-dev')}")
+    print(f"  -> Output lands at {OUTPUT_PATH}")
+    print(f"  -> EventBridge fires on inference-output/ prefix")
+    print(f"  -> Lambda reads results, calls Bedrock for fraud_score > 0.9 rows")
+    print(f"  -> Results written to DynamoDB table: {os.environ.get('FRAUDGUARD_DYNAMODB_TABLE', 'fraudguard-flagged-transactions-dev')}")
     print(f"{'='*60}\n")

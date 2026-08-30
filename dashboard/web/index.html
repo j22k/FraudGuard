@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FraudGuard // Ops Desk</title>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Light Telemetry Stylesheet -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ================= MAIN WORKSPACE ================= -->
+    <div class="main-wrapper">
+
+      <!-- FILTER STRIP -->
+      <div class="filter-bar">
+        <div class="filter-group">
+          <span>TIME:</span>
+          <select id="timeFilterSelect" class="filter-select">
+            <option value="1h">Last 1 Hour</option>
+            <option value="24h">Last 24 Hours</option>
+            <option value="7d">Last 7 Days</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <span>SORT BY:</span>
+          <select id="sortSelect" class="filter-select">
+            <option value="score_desc">Highest Fraud Score ↓</option>
+            <option value="time_desc">Newest First ↓</option>
+            <option value="id_asc">Transaction ID ↑</option>
+          </select>
+        </div>
+
+        <div class="search-box-wrapper">
+          <i data-lucide="search" class="search-icon"></i>
+          <input 
+            type="text" 
+            id="searchBox" 
+            placeholder="Search Transaction ID or explanation text..." 
+            class="search-input"
+          />
+        </div>
+
+        <!-- Hidden elements needed for app.js status binding -->
+        <span id="tableStatusText" style="display:none;">DYNAMODB</span>
+        <button id="btnSync" style="display:none;"><i id="syncIcon"></i></button>
+      </div>
+
+      <!-- MAIN CONTENT BODY -->
+      <main class="content-body">
+
+        <!-- KPI CARDS STRIP -->
+        <section class="kpi-strip">
+          <div class="light-card kpi-card">
+            <span class="kpi-label">TOTAL DYNAMODB RECORDS</span>
+            <div class="kpi-value-row">
+              <span id="kpiCount" class="kpi-value">0</span>
+              <span class="kpi-subtag teal">LIVE STREAM</span>
+            </div>
+          </div>
+
+          <div class="light-card kpi-card">
+            <span class="kpi-label">PEAK FRAUD SCORE</span>
+            <div class="kpi-value-row">
+              <span id="kpiPeak" class="kpi-value critical">0.0000</span>
+              <span id="kpiPeakTxn" class="kpi-subtag font-mono text-slate-500">--</span>
+            </div>
+          </div>
+
+          <div class="light-card kpi-card">
+            <span class="kpi-label">AVERAGE FRAUD SCORE</span>
+            <div class="kpi-value-row">
+              <span id="kpiAvg" class="kpi-value warning">0.0000</span>
+              <div class="w-16 h-2 bg-amber-200 rounded overflow-hidden flex align-center">
+                <div id="kpiAvgBar" class="h-full bg-amber-600" style="width: 0%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="light-card kpi-card">
+            <span class="kpi-label">DATA FRESHNESS</span>
+            <div class="kpi-value-row">
+              <span id="kpiFreshness" class="kpi-value">00:03.42</span>
+              <span id="kpiFreshnessStatus" class="kpi-subtag teal">SYNCING...</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- SPLIT WORKSPACE -->
+        <section class="split-workspace">
+
+          <!-- LEFT COLUMN: FLAGGED QUEUE TABLE -->
+          <div class="light-card queue-panel">
+            <div class="panel-header">
+              <span class="panel-title">FLAGGED TRANSACTIONS</span>
+              <span class="panel-badge" id="queueCountBadge">0 ITEMS</span>
+            </div>
+
+            <div class="queue-table-wrapper">
+              <table class="queue-table">
+                <thead>
+                  <tr>
+                    <th>TRANSACTION ID</th>
+                    <th>FRAUD SCORE</th>
+                    <th>TIMESTAMP</th>
+                    <th>STATUS</th>
+                  </tr>
+                </thead>
+                <tbody id="queueTableBody">
+                  <!-- Dynamically populated by app.js -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- RIGHT COLUMN: TRANSACTION INVESTIGATION DOSSIER -->
+          <div class="light-card investigation-panel">
+            
+            <div class="investigation-header">
+              <div class="investigation-title">
+                <i data-lucide="activity" class="w-4 h-4 text-teal-700"></i>
+                <span>TRANSACTION INVESTIGATION</span>
+                <span id="dossierTxnHeader" class="font-mono text-teal-800 font-bold">--</span>
+              </div>
+
+              <div class="btn-group-sm">
+                <button id="btnCopyTrace" class="btn-secondary-sm">COPY TRACE</button>
+                <button id="btnCopyJson" class="btn-secondary-sm">VIEW JSON</button>
+              </div>
+            </div>
+
+            <div class="investigation-content">
+
+              <!-- HERO TOKEN CARD -->
+              <div class="token-hero-card">
+                <div class="token-brand">FRAUDGUARD // SECURITY FORENSIC NODE</div>
+                <div id="cardTxnDisplay" class="token-id">TXN-89421</div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <div>
+                    <span style="font-size: 10px; color: var(--text-3); text-transform: uppercase;">Anomaly Score: </span>
+                    <span id="cardScoreDisplay" class="font-mono font-bold text-red-700">0.0000</span>
+                  </div>
+                  <span id="cardStatusChip" class="chip chip-neg">CRITICAL</span>
+                </div>
+              </div>
+              
+              <!-- DYNAMODB RECORD ATTRIBUTES GRID -->
+              <div class="meta-box">
+                <div class="meta-box-title">DYNAMODB ITEM ATTRIBUTES</div>
+                <div class="meta-row">
+                  <span class="meta-key">TransactionID / txn_id:</span>
+                  <span id="metaTxnId" class="meta-val font-mono">--</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-key">fraud_score:</span>
+                  <span id="metaFraudScore" class="meta-val highlight-red font-mono">0.0000</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-key">timestamp (ISO 8601 UTC):</span>
+                  <span id="metaTimestamp" class="meta-val font-mono">--</span>
+                </div>
+              </div>
+
+              <!-- BEDROCK CLAUDE 3 HAIKU AI EXPLANATION -->
+              <div class="ai-box">
+                <div class="ai-box-header">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                  <span>AMAZON BEDROCK // CLAUDE 3 HAIKU ROOT CAUSE ANALYSIS</span>
+                </div>
+                <p id="dossierExplanation" class="ai-box-text">
+                  Select any transaction from the left queue to inspect Claude's forensic root cause explanation.
+                </p>
+              </div>
+
+              <!-- RAW DYNAMODB ITEM CONTAINER -->
+              <div class="meta-box">
+                <div class="meta-box-title">RAW DYNAMODB JSON PAYLOAD</div>
+                <pre id="dossierRawJson" style="font-family: var(--font-mono); font-size: 11px; color: var(--text-1); margin: 0; white-space: pre-wrap; word-break: break-all;">{}</pre>
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+
+      <!-- FOOTER STATUS BAR -->
+      <footer class="footer-bar">
+        <div>PROVENANCE: AWS LAMBDA / BEDROCK ARTIFACT / DYNAMODB STREAM</div>
+        <div class="footer-links">
+          <a href="#">System Status</a>
+          <a href="#">Documentation</a>
+          <a href="#">Log Export</a>
+        </div>
+      </footer>
+
+    </div>
+
+  </div>
+
+  <!-- Application Logic -->
+  <script src="app.js"></script>
+</body>
+</html>

@@ -55,11 +55,15 @@ Write-Host "  FRAUDGUARD_MODEL_PACKAGE_GROUP = $env:FRAUDGUARD_MODEL_PACKAGE_GRO
 Write-Host ""
 
 $ArgsList = @()
-if ($InputS3) {
+if ($InputS3 -and $InputS3.StartsWith("s3://")) {
     $ArgsList += @("--input-s3", $InputS3)
 }
 if ($Wait) {
     $ArgsList += "--wait"
 }
 
-python (Join-Path $ProjectRoot 'ml\batch_transform.py') @ArgsList
+$VenvPython = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
+$PythonExe = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
+
+& $PythonExe (Join-Path $ProjectRoot 'ml\batch_transform.py') @ArgsList
+
