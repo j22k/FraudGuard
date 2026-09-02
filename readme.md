@@ -12,7 +12,7 @@ FraudGuard is an event-driven, serverless machine learning operations (MLOps) pi
 
 ---
 
-## 🏛️ System Architecture
+## System Architecture
 
 ![FraudGuard AWS Architecture](docs/img/AWS-services-fraud-guard.gif)
 
@@ -45,7 +45,7 @@ FraudGuard is an event-driven, serverless machine learning operations (MLOps) pi
 
 ---
 
-## 💡 Key Design Decisions & Cost Architecture
+##  Key Design Decisions & Cost Architecture
 
 | Design Decision | Implementation | Production Rationale |
 |---|---|---|
@@ -57,7 +57,7 @@ FraudGuard is an event-driven, serverless machine learning operations (MLOps) pi
 
 ---
 
-## 🖥️ Live Forensic Operations Console
+##  Live Forensic Operations Console
 
 Inspect live flagged transactions, forensic dossiers, anomaly distributions, and Bedrock root-cause narratives:
 
@@ -71,7 +71,7 @@ Inspect live flagged transactions, forensic dossiers, anomaly distributions, and
 
 ---
 
-## 📁 Repository Structure
+##  Repository Structure
 
 ```
 FraudGuard/
@@ -108,7 +108,7 @@ FraudGuard/
 
 ---
 
-## 🚀 Quickstart Guide
+##  Quickstart Guide
 
 ### 0. Prerequisites & AWS Service Quotas
 1. **AWS CLI & Terraform:** Configured with AWS credentials in `us-east-1` and Terraform `>= 1.5.0`.
@@ -166,7 +166,7 @@ python -m pytest tests/test_handler.py -v
 
 ---
 
-## 📊 Evaluation & Validation Metrics
+##  Evaluation & Validation Metrics
 
 * **Dataset:** IEEE-CIS Fraud Detection Benchmark (590,540 raw transactions)
 * **Features:** 64 engineered features (Aggregates, Interaction terms, Velocity counts, Email risk bucketing)
@@ -179,11 +179,11 @@ python -m pytest tests/test_handler.py -v
 
 ---
 
-## 📑 In-Depth Documentation
+##  In-Depth Documentation
 
-* 📄 [**Production Gap & Industrial Standard Audit**](docs/PRODUCTION_GAP_AUDIT.md) — Forensic code review, enterprise benchmark (vs. Stripe Radar / PayPal), and 10-step remediation roadmap.
-* 📊 [**AWS Architecture Presentation Deck (.pptx)**](docs/FraudGuard_Architecture_Diagram.pptx) — 16:9 dark-mode presentation deck.
-* 📄 [**AWS Architecture Blueprint (.pdf)**](docs/FraudGuard_Architecture_Diagram.pdf) — Architectural specification sheet.
+*  [**Production Gap & Industrial Standard Audit**](docs/PRODUCTION_GAP_AUDIT.md) — Forensic code review, enterprise benchmark (vs. Stripe Radar / PayPal), and 10-step remediation roadmap.
+*  [**AWS Architecture Presentation Deck (.pptx)**](docs/FraudGuard_Architecture_Diagram.pptx) — 16:9 dark-mode presentation deck.
+*  [**AWS Architecture Blueprint (.pdf)**](docs/FraudGuard_Architecture_Diagram.pdf) — Architectural specification sheet.
 
 ---
 
