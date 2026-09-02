@@ -1,4 +1,4 @@
-# FraudGuard 🛡️
+# FraudGuard 
 > **Cloud-Native Fraud Detection Pipeline with Automated MLOps & GenAI Explainability**
 
 [![AWS](https://img.shields.io/badge/AWS-Cloud-orange?logo=amazon-aws)](https://aws.amazon.com/)
