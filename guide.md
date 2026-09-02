@@ -1,167 +1,128 @@
-# FraudGuard — Complete Execution & Run Guide
+# FraudGuard — Operations & Execution Guide
 
-Step-by-step guide to deploying infrastructure, training the ML model on AWS SageMaker, running batch inference, and generating AI-powered fraud risk explanations via Amazon Bedrock into DynamoDB.
+This guide provides end-to-end instructions for deploying the cloud infrastructure, executing the SageMaker training pipeline, running batch inference, and inspecting AI-generated explanations in the live operations console.
 
----
-
-## 📋 Prerequisites & One-Time Setup
-
-1. **AWS CLI:** Installed and configured (`aws configure`) with credentials for your AWS account.
-2. **Python:** Version 3.10+ (Python 3.12 recommended).
-3. **Terraform:** Version `>= 1.5.0` installed.
-4. **AWS Region:** Standardized on `us-east-1` (N. Virginia).
-5. **AWS Service Quotas (SageMaker):**
-   * Go to **AWS Console $\rightarrow$ Service Quotas $\rightarrow$ Amazon SageMaker** (in `us-east-1`).
-   * Ensure `ml.m5.xlarge for processing job usage` and `ml.m5.xlarge for training job usage` have a quota of at least `1` or `2` (request increase if `0`).
+![FraudGuard AWS Architecture](docs/img/AWS-services-fraud-guard.gif)
 
 ---
 
-## 🛠️ Step 1: Local Environment Setup
+## 📋 Prerequisites & AWS Service Quotas
 
-From your terminal in the project root:
+1. **AWS CLI:** Configured with valid credentials (`aws configure`) in `us-east-1`.
+2. **Terraform:** Version `>= 1.5.0` installed.
+3. **Python:** Python 3.10+ (Python 3.12 recommended).
+4. **AWS Service Quotas (Amazon SageMaker):**
+   New or standard AWS accounts often default to `0` for SageMaker compute instances. Before launching jobs, verify your account has a quota of at least `1` in region `us-east-1`:
+   * Navigate to **AWS Console $\rightarrow$ Service Quotas $\rightarrow$ AWS services $\rightarrow$ Amazon SageMaker**.
+   * Search for `ml.m5.xlarge` and verify the following quotas:
+     * `ml.m5.xlarge for processing job usage`
+     * `ml.m5.xlarge for training job usage`
+     * `ml.m5.xlarge for transform job usage`
+   * If any value is `0`, click the quota name $\rightarrow$ **Request quota increase** $\rightarrow$ Enter `1` or `2` $\rightarrow$ Submit (approvals are usually automated and take a few minutes).
 
+---
+
+## 🚀 Execution Workflow
+
+### Step 1: Virtual Environment Setup
 ```powershell
-# 1. Create and activate Python virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1   # On Windows PowerShell
-# source .venv/bin/activate    # On Linux / macOS
-
-# 2. Install dependencies
+.\.venv\Scripts\Activate.ps1   # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
----
-
-## 📦 Step 2: Pre-package Lambda & Deploy Infrastructure (Terraform)
-
-Terraform provisions all cloud resources (S3 bucket, DynamoDB table, IAM roles, EventBridge rules, SageMaker Model Group, and Lambda function) and auto-generates the root `.env` file.
-
+### Step 2: Infrastructure Provisioning (Terraform)
 ```powershell
-# 1. Create the initial Lambda package
+# 1. Package the Lambda deployment artifact
 Compress-Archive -Path lambda\handler.py, lambda\bedrock_client.py -DestinationPath lambda\lambda_package.zip -Force
 
-# 2. Provision Infrastructure with Terraform
+# 2. Initialize and apply Terraform
 cd infra/terraform
-terraform init -upgrade
-terraform apply
+terraform init
+terraform apply -auto-approve
 cd ../..
 ```
+*Terraform provisions the S3 bucket, DynamoDB table, IAM roles, EventBridge rules, SageMaker Model Group, and Lambda function. It also auto-generates the root `.env` file.*
 
-> **Note:** `terraform apply` automatically generates a `.env` file in the project root containing your actual bucket names, table names, and IAM role ARNs.
-
----
-
-## 🧪 Step 3: Run Local Unit Tests
-
-Verify the explainability handler and Bedrock mock integration before running in the cloud:
-
+### Step 3: Run Local Validation Suite
 ```powershell
 python -m pytest tests/test_handler.py -v
 ```
 
-*(Expected output: 7 passed in under 1 second without requiring AWS calls).*
-
----
-
-## 🚀 Step 4: Upload Training Data & Run SageMaker Pipeline
-
-### Option A: Automatic Trigger via S3 Upload (EventBridge)
-Uploading your dataset to the `raw/` S3 prefix automatically kicks off the SageMaker training pipeline:
-
+### Step 4: Ingest Data & Trigger Training DAG
 ```powershell
+# Upload raw dataset to S3 (EventBridge auto-triggers the SageMaker Pipeline)
 .\scripts\upload_data.ps1
-```
 
-### Option B: Trigger Pipeline Manually
-You can also start or retrain the pipeline directly from your terminal:
-
-```powershell
+# Alternatively, trigger the pipeline manually
 .\scripts\run_pipeline.ps1
 ```
 
-### 🔍 Monitor in AWS Console:
-1. Open **Amazon SageMaker $\rightarrow$ Pipelines**.
-2. Click **`fraudguard-pipeline`** $\rightarrow$ Click the running execution.
-3. Watch the 4 DAG steps complete:
-   * **`PreprocessFraudData`** (Extracts 64 features, splits into train/val/test)
-   * **`TrainFraudModel`** (Trains XGBoost with early stopping)
-   * **`EvaluateFraudModel`** (Calculates AUC-PR and ROC-AUC)
-   * **`CheckAUCPRThreshold` $\rightarrow$ `RegisterFraudModel`** (Gated on `AUC-PR >= 0.35`)
+**SageMaker DAG Steps:**
+1. `PreprocessFraudData` — Computes 64 features and performs time-based train/val/test split.
+2. `TrainFraudModel` — Trains XGBoost with `scale_pos_weight` imbalance handling.
+3. `EvaluateFraudModel` — Evaluates test partition AUC-PR and ROC-AUC metrics.
+4. `CheckAUCPRThreshold` — Gates registration on `AUC-PR >= 0.35`.
+5. `RegisterFraudModel` — Registers model package to `fraudguard-model-group`.
 
----
+### Step 5: Approve Model in SageMaker Model Registry
+1. Open **AWS Console $\rightarrow$ Amazon SageMaker $\rightarrow$ Model Registry**.
+2. Select **`fraudguard-model-group`** $\rightarrow$ Click latest version.
+3. Click **Update approval status** $\rightarrow$ Select **`Approved`** $\rightarrow$ **Save**.
 
-## ✅ Step 5: Approve Model in SageMaker Model Registry
-
-Once the pipeline finishes successfully:
-
-1. In AWS Console, go to **Amazon SageMaker $\rightarrow$ Model Registry**.
-2. Click on **`fraudguard-model-group`**.
-3. Select the latest model package version.
-4. Click **Update approval status** $\rightarrow$ Change status from `PendingManualApproval` to **`Approved`** $\rightarrow$ Click **Update status**.
-
----
-
-## ⚡ Step 6: Run Batch Transform (Inference)
-
-Run batch inference using the approved model against preprocessed test transactions:
-
+### Step 6: Execute Batch Transform
 ```powershell
-# Automatically discovers the latest test dataset and runs batch transform
+# Runs batch scoring against latest preprocessed dataset on S3
 .\scripts\run_batch_transform.ps1 -Wait
 ```
 
-*(Adding `-Wait` streams the job logs in your terminal until completed).*
+### Step 7: Serverless Explainability & Live Triage
+When batch transform completes, predictions land in `s3://$bucket/inference-output/`:
+1. EventBridge triggers the Lambda explainability handler.
+2. Lambda filters high-risk records (`fraud_score > 0.90`).
+3. Amazon Bedrock (Claude 3 Haiku) generates root-cause risk summaries.
+4. Flagged alerts and narratives are saved to DynamoDB.
+
+### Step 8: Launch Forensic Operations Console
+```powershell
+.\scripts\run_dashboard.ps1
+```
+*Opens `http://localhost:8080` automatically:*
+
+![FraudGuard Live Ops Console](docs/img/web.png)
 
 ---
 
-## 🔎 Step 7: Verify EventBridge $\rightarrow$ Lambda $\rightarrow$ Bedrock $\rightarrow$ DynamoDB
+## 🔄 Updating & Fast Iteration
 
-When batch transform completes:
-1. Scored CSV outputs land in `s3://$bucket/inference-output/`.
-2. EventBridge rule `fraudguard-s3-inference-trigger-dev` automatically invokes the Lambda function `fraudguard-explainability-dev`.
-3. Lambda filters for fraud-positive rows (`fraud_score > 0.9`).
-4. Amazon Bedrock (Claude 3 Haiku) generates human-readable risk summaries.
-5. Flagged transactions and AI explanations are written to DynamoDB.
-
-### Check Results:
-1. Open **Amazon DynamoDB $\rightarrow$ Tables $\rightarrow$ `fraudguard-flagged-transactions-dev`**.
-2. Click **Explore table items**.
-3. View the records containing `txn_id`, `fraud_score`, `explanation`, and `timestamp`.
-
----
-
-## 🔄 Step 8: Updating Code & Fast Iteration
-
-* **Updating Lambda logic:** To update `lambda/handler.py` or `lambda/bedrock_client.py` without touching Terraform:
+* **Update Lambda Code:**
   ```powershell
   .\scripts\deploy_lambda.ps1
   ```
-* **Updating ML Pipeline:** Modify scripts in `ml/` and re-run:
+* **Retrain Pipeline:**
   ```powershell
   .\scripts\run_pipeline.ps1
   ```
 
 ---
 
-## 🧹 Step 9: Teardown / Clean Up (Destroy Infrastructure)
+## 🧹 Teardown (Clean Up Cloud Resources)
 
-To tear down all provisioned cloud resources to prevent ongoing costs:
-
+To avoid incurring ongoing AWS charges when not in use:
 ```powershell
 cd infra/terraform
-terraform destroy
+terraform destroy -auto-approve
 cd ../..
 ```
 
-*(Type `yes` when prompted. Note: Ensure you empty the S3 bucket if objects are retained before destruction).*
-
 ---
 
-## 📚 Scripts Summary Table
+## 📑 Automation Scripts Reference
 
-| PowerShell Script | Bash Script (Linux/Mac) | Description |
+| PowerShell Script | Linux / Bash Script | Purpose |
 |---|---|---|
 | `.\scripts\upload_data.ps1` | `bash scripts/upload_data.sh` | Uploads local raw CSV to S3 `raw/` directory. |
-| `.\scripts\run_pipeline.ps1` | `bash scripts/run_pipeline.sh` | Registers & runs SageMaker training pipeline. |
-| `.\scripts\run_batch_transform.ps1` | `bash scripts/run_batch_transform.sh` | Runs batch transform on S3 test data. |
-| `.\scripts\deploy_lambda.ps1` | `bash scripts/deploy_lambda.sh` | Packages & deploys Lambda updates directly. |
+| `.\scripts\run_pipeline.ps1` | `bash scripts/run_pipeline.sh` | Submits and starts the SageMaker training pipeline DAG. |
+| `.\scripts\run_batch_transform.ps1` | `bash scripts/run_batch_transform.sh` | Runs batch transform on S3 test data with auto-cleanup. |
+| `.\scripts\deploy_lambda.ps1` | `bash scripts/deploy_lambda.sh` | Directly packages and updates Lambda function code. |
+| `.\scripts\run_dashboard.ps1` | — | Launches the local forensic triage console on port 8080. |

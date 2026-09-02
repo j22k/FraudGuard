@@ -1,11 +1,12 @@
 param (
     [ValidateSet("web", "server")]
     [string]$Mode = "web",
-    [int]$Port = 8000
+    [int]$Port = 8080
 )
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+$env:PORT = "$Port"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Cyan
@@ -16,14 +17,14 @@ Write-Host ""
 switch ($Mode) {
     "web" {
         $ServerPath = Join-Path $ProjectRoot "dashboard\server.py"
-        Write-Host "🚀 Starting Live DynamoDB Web Console on http://localhost:8000..." -ForegroundColor Green
-        Start-Process "http://localhost:8000"
+        Write-Host "🚀 Starting Live DynamoDB Web Console on http://localhost:$Port..." -ForegroundColor Green
+        Start-Process "http://localhost:$Port"
         python $ServerPath
         break
     }
     "server" {
         $ServerPath = Join-Path $ProjectRoot "dashboard\server.py"
-        Write-Host "🚀 Starting Live DynamoDB Backend API on http://localhost:8000..." -ForegroundColor Green
+        Write-Host "🚀 Starting Live DynamoDB Backend API on http://localhost:$Port..." -ForegroundColor Green
         python $ServerPath
         break
     }

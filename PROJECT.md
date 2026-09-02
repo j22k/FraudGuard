@@ -7,8 +7,9 @@ FraudGuard Phase 4 provides the serverless explainability and event-driven autom
 3. **Bedrock Claude 3 Haiku Integration**: For fraud-positive rows (`fraud_score > 0.9`), `lambda/bedrock_client.py` constructs a structured prompt using human-readable features (`TransactionAmt`, `hour_of_day`, `P_emaildomain_bucket`, `card4`, `card6`, `ProductCD`) and invokes `anthropic.claude-3-haiku-20240307-v1:0` via AWS Bedrock Runtime Messages API. Clean transactions (`fraud_score <= 0.9`) are skipped with zero Bedrock / DynamoDB calls (cost rule).
 4. **DynamoDB Persistence**: Explanations and transaction metadata are saved to DynamoDB with partition key `TransactionID` (String), `txn_id` (String), `fraud_score` (Decimal), `explanation` (String), and ISO-8601 UTC `timestamp` (String).
 5. **Terraform Infrastructure**: Modular IaC in `infra/terraform/modules/lambda/` and updated root `main.tf`, `modules/eventbridge/`, `outputs.tf`, `env_file.tf`, with anti-circular `aws_lambda_permission` in root `main.tf`.
-6. **Workflow Scripts**: `scripts/upload_data.ps1` and `scripts/deploy_lambda.ps1` with `.env` parsing, zip packaging, S3 upload, and first-deploy fallback.
+6. **Workflow Scripts**: `scripts/upload_data.ps1`, `scripts/deploy_lambda.ps1`, and `scripts/run_dashboard.ps1` (running live ops console on `http://localhost:8080`).
 7. **Test Fixtures & Mock Test Suite**: `tests/fixtures/sample_fraud_event.json`, `tests/fixtures/sample_results.csv` (5 rows, 2 fraud-positive > 0.9, 3 clean < 0.5), and `tests/test_handler.py` unit testing with mock AWS clients.
+8. **Visual Assets & Reports**: Official AWS Architecture GIF (`docs/img/AWS-services-fraud-guard.gif`), Live Web Console Screenshot (`docs/img/web.png`), and [Production Gap Audit](docs/PRODUCTION_GAP_AUDIT.md).
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |

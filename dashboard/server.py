@@ -7,11 +7,12 @@ Serves the web console and provides live streaming from DynamoDB:
 import http.server
 import json
 import os
+import sys
 import urllib.parse
 from decimal import Decimal
 import boto3
 
-PORT = 8000
+PORT = int(os.environ.get("PORT", 8080))
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 
@@ -86,9 +87,15 @@ class FraudGuardRequestHandler(http.server.SimpleHTTPRequestHandler):
             }).encode("utf-8"))
 
 if __name__ == "__main__":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     print(f"\n=======================================================")
-    print(f"🛡️  FraudGuard DynamoDB Web Console")
-    print(f"👉 http://localhost:{PORT}")
+    print(f"[+] FraudGuard DynamoDB Web Console")
+    print(f"[*] Access URL: http://localhost:{PORT}")
     print(f"=======================================================\n")
     server = http.server.HTTPServer(("0.0.0.0", PORT), FraudGuardRequestHandler)
     try:

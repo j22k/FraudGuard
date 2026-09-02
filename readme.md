@@ -1,148 +1,192 @@
-# FraudGuard
+# FraudGuard 🛡️
+> **Cloud-Native Fraud Detection Pipeline with Automated MLOps & GenAI Explainability**
 
-Production-style AWS fraud detection pipeline — XGBoost inference, LLM-based explainability, and event-driven serverless routing, fully provisioned via Terraform.
+[![AWS](https://img.shields.io/badge/AWS-Cloud-orange?logo=amazon-aws)](https://aws.amazon.com/)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform_1.5+-844FBA?logo=terraform)](https://www.terraform.io/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://www.python.org/)
+[![SageMaker](https://img.shields.io/badge/MLOps-Amazon_SageMaker-232F3E?logo=amazon-aws)](https://aws.amazon.com/sagemaker/)
+[![Bedrock](https://img.shields.io/badge/GenAI-Amazon_Bedrock_Claude_Haiku-teal)](https://aws.amazon.com/bedrock/)
+[![DynamoDB](https://img.shields.io/badge/Database-Amazon_DynamoDB-4053D6?logo=amazon-dynamodb)](https://aws.amazon.com/dynamodb/)
 
-Built as a portfolio project to demonstrate cost-conscious, interview-defensible ML infra decisions — not a toy notebook demo.
-
-## Architecture
-
-```
-Transaction Input
-      ↓
-SageMaker Pipeline (preprocess → train → evaluate → register)
-      ↓
-XGBoost Batch Transform (fraud probability → binary label via threshold)
-      ↓
-EventBridge Rule (fires only on fraud-positive inference)
-      ↓
-Lambda (receives flagged txn payload)
-      ↓
-Bedrock — Claude Haiku (plain-English fraud explanation)
-      ↓
-DynamoDB (txn_id, fraud_score, explanation, timestamp)
-```
-
-Clean transactions exit after the XGBoost step. No LLM call, no downstream cost.
-
-## Key Design Decisions
-
-| Decision | Why |
-|---|---|
-| LLM called only on fraud-positives | Bedrock cost stays near-zero at scale — most traffic is clean |
-| Batch transform, not real-time endpoint | No idle inference costs; endpoint destroyed after each job |
-| Terraform destroy-target pattern | SageMaker resources torn down post-training, not left running |
-| EventBridge over polling | Decouples inference from explanation/storage; async by design |
-| Least-privilege IAM | Each Lambda/SageMaker role scoped to only its required actions |
-
-Every decision above is intentional and was chosen over a simpler/costlier alternative — documented here for interview discussion.
-
-## Stack
-
-- **ML:** XGBoost, SageMaker Pipelines, batch transform inference
-- **LLM:** Amazon Bedrock (Claude Haiku) — fraud-positive explainability only
-- **Infra:** Terraform (modular: `s3`, `sagemaker`, `lambda`, `dynamodb`, `eventbridge`, `iam`)
-- **Compute/Routing:** AWS Lambda, EventBridge
-- **Storage:** S3 (artifacts/data), DynamoDB (results)
-- **Language:** Python
-
-## Repo Structure
-
-```
-fraudguard/
-├── ml/              # feature engineering, training, evaluation scripts
-├── lambda/          # explainability handler (Bedrock Haiku call)
-├── infra/terraform/ # modular IaC — s3, sagemaker, lambda, dynamodb, eventbridge, iam
-├── tests/           # unit + integration tests
-├── scripts/         # pipeline submission, local run helpers
-├── docs/            # architecture notes, cost analysis, blog drafts
-└── data/            # local dataset (gitignored / DVC-tracked)
-```
-
-## Status
-
-- [x] Architecture finalized
-- [x] Terraform modular infrastructure deployed (S3, IAM, DynamoDB, Model Registry, EventBridge, Lambda)
-- [x] Dataset & feature engineering schema locked (64 features)
-- [x] Local XGBoost training & baseline validation (Test AUC-PR: 0.4208, ROC-AUC: 0.8754)
-- [x] SageMaker Pipeline workflow (ProcessingStep → TrainingStep → Evaluate → ConditionStep → RegisterModel)
-- [x] Lambda & Bedrock Claude 3.5 Haiku explainability handler (`lambda/handler.py`, `lambda/bedrock_client.py`)
-- [x] EventBridge rule for inference output triggering Lambda
-- [x] Unit test suite for explainability handler with mocked AWS clients (`tests/test_handler.py`)
-- [x] End-to-end live batch run & validation (`88,581` inferences, `1,271` fraud cases detected, DynamoDB populated)
-- [x] Cost defense report & portfolio writeup
+FraudGuard is an event-driven, serverless machine learning operations (MLOps) pipeline designed for financial fraud detection. It couples gradient-boosted decision trees (XGBoost) on **Amazon SageMaker** with **Amazon Bedrock (Claude 3 Haiku)** to deliver real-time natural language fraud risk narratives to security analysts—while maintaining strict cost controls.
 
 ---
 
-## Complete End-to-End Execution Guide
+## 🏛️ System Architecture
 
-### 1. Local Environment Setup
-```bash
+![FraudGuard AWS Architecture](docs/img/AWS-services-fraud-guard.gif)
+
+### Data & Execution Flow
+```
+1. Ingestion       ──► S3 Bucket (s3://{bucket}/raw/)
+                         │ (ObjectCreated Notification)
+                         ▼
+2. MLOps DAG       ──► Amazon EventBridge ──► SageMaker Pipeline Execution
+                         │ ├─ Preprocess (64-feature transformation & time-split)
+                         │ ├─ Train (XGBoost with class imbalance weighting)
+                         │ ├─ Evaluate (AUC-PR & ROC-AUC metric calculation)
+                         │ └─ Quality Gate (AUC-PR >= 0.35) ──► Model Registry
+                         ▼
+3. Batch Scoring   ──► Ephemeral SageMaker Batch Transform (ml.m5.xlarge)
+                         │ Outputs scored predictions to S3
+                         ▼
+4. Event Routing   ──► EventBridge Rule (inference-output/ prefix filter)
+                         │ Invokes AWS Lambda Handler
+                         ▼
+5. Gated GenAI     ──► AWS Lambda (Threshold Filter: score > 0.90)
+                         │ ├─ Clean Txns (<= 0.90): Zero Bedrock invocation ($0.00)
+                         │ └─ Fraud Txns (> 0.90): Amazon Bedrock (Claude 3 Haiku)
+                         ▼
+6. Persistence     ──► Amazon DynamoDB (fraudguard-flagged-transactions-dev)
+                         │ Stores: txn_id, fraud_score, Bedrock explanation, UTC timestamp
+                         ▼
+7. Security Node   ──► Live Forensic Operations Console (http://localhost:8080)
+```
+
+---
+
+## 💡 Key Design Decisions & Cost Architecture
+
+| Design Decision | Implementation | Production Rationale |
+|---|---|---|
+| **Gated LLM Invocations** | Bedrock Claude 3 Haiku is invoked **only** on fraud-positive transactions (`score > 0.90`). | Keeps GenAI API costs near zero at scale ($0 spend on 98.5%+ clean traffic). |
+| **Ephemeral Batch Inference** | SageMaker Batch Transform over 24/7 Real-Time Endpoints. | Eliminates idle EC2 endpoint compute costs (~$150+/month); instances terminate immediately post-job. |
+| **Event-Driven Decoupling** | Amazon EventBridge routes events from S3 to SageMaker and Lambda. | Eliminates polling loops and tightly couples services with native AWS retry semantics. |
+| **Fully Modular IaC** | 100% codified via Terraform (`s3`, `iam`, `dynamodb`, `eventbridge`, `lambda`, `sagemaker`). | Guarantees deterministic cloud deployments and eliminates configuration drift. |
+| **Least-Privilege Security** | Distinct IAM roles for SageMaker, EventBridge, and Lambda. | Zero cross-service credential sharing or wildcard permissions. |
+
+---
+
+## 🖥️ Live Forensic Operations Console
+
+Inspect live flagged transactions, forensic dossiers, anomaly distributions, and Bedrock root-cause narratives:
+
+![FraudGuard Live Ops Console](docs/img/web.png)
+
+```powershell
+# Launch local operations console
+.\scripts\run_dashboard.ps1
+```
+*Accessible at `http://localhost:8080` (auto-syncs with live DynamoDB alerts).*
+
+---
+
+## 📁 Repository Structure
+
+```
+FraudGuard/
+├── ml/                      # Machine Learning & SageMaker Pipeline DAG
+│   ├── preprocess.py        # 64-feature transformation & time-based split
+│   ├── train.py             # Local XGBoost training with scale_pos_weight
+│   ├── sagemaker_pipeline.py# SageMaker DAG (Process -> Train -> Eval -> Register)
+│   ├── batch_transform.py   # Batch transform runner against approved model
+│   └── model_artifacts/     # Serialized model definitions & feature registry
+├── lambda/                  # Serverless Explainability Layer
+│   ├── handler.py           # EventBridge S3 parser & DynamoDB batch writer
+│   └── bedrock_client.py    # Anthropic Messages API client for Claude 3 Haiku
+├── infra/terraform/         # Modular Infrastructure as Code (IaC)
+│   ├── main.tf              # Root module wiring & Lambda permissions
+│   ├── modules/             # s3, iam, dynamodb, eventbridge, lambda, sagemaker
+│   └── outputs.tf           # Auto-generates root .env configuration
+├── dashboard/               # Security Forensic Node & Web UI
+│   ├── server.py            # Local HTTP server streaming live DynamoDB items
+│   └── web/                 # Frontend console (HTML5, Tailwind CSS, Lucide icons)
+├── scripts/                 # Cross-platform execution automation (PowerShell / Bash)
+│   ├── upload_data.ps1      # S3 dataset upload
+│   ├── run_pipeline.ps1     # SageMaker pipeline trigger
+│   ├── run_batch_transform.ps1 # Batch transform execution
+│   ├── deploy_lambda.ps1    # Direct Lambda packaging & deployment
+│   └── run_dashboard.ps1    # Local ops dashboard server
+├── tests/                   # Test Automation
+│   ├── test_handler.py      # Unit tests with mocked AWS services
+│   └── test_adversarial_challenger_1.py # Adversarial & boundary condition test suite
+└── docs/                    # Technical Documentation & Diagrams
+    ├── PRODUCTION_GAP_AUDIT.md # Industrial benchmark & production audit
+    ├── FraudGuard_Architecture_Diagram.pdf # PDF Architecture Blueprint
+    └── FraudGuard_Architecture_Diagram.pptx # Slide Presentation Deck (16:9 Dark)
+```
+
+---
+
+## 🚀 Quickstart Guide
+
+### 0. Prerequisites & AWS Service Quotas
+1. **AWS CLI & Terraform:** Configured with AWS credentials in `us-east-1` and Terraform `>= 1.5.0`.
+2. **SageMaker Instance Service Quotas:**
+   New AWS accounts default to `0` for SageMaker compute instances. Ensure quota is at least `1` in **AWS Console $\rightarrow$ Service Quotas $\rightarrow$ Amazon SageMaker** (in region `us-east-1`):
+   * `ml.m5.xlarge for processing job usage`
+   * `ml.m5.xlarge for training job usage`
+   * `ml.m5.xlarge for transform job usage`
+   *(Click "Request increase at account-level" if current value is `0`).*
+
+### 1. Environment Setup
+```powershell
+# Clone repository and create Python virtual environment
 python -m venv .venv
-source .venv/bin/activate         # Linux / macOS
-# or: .venv\Scripts\Activate.ps1   # Windows PowerShell
+.\.venv\Scripts\Activate.ps1   # Windows PowerShell (or source .venv/bin/activate on Linux/macOS)
 
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Pre-package Lambda & Deploy Infrastructure
-Before initial `terraform apply`, package the Lambda archive, then apply the infrastructure:
+### 2. Deploy Cloud Infrastructure
 ```powershell
-# Windows PowerShell
+# Package Lambda archive and provision AWS resources via Terraform
 Compress-Archive -Path lambda\handler.py, lambda\bedrock_client.py -DestinationPath lambda\lambda_package.zip -Force
 
 cd infra/terraform
 terraform init
-terraform apply
+terraform apply -auto-approve
 cd ../..
 ```
+*(Terraform auto-generates the root `.env` containing your bucket names, role ARNs, and table IDs).*
 
-*(This provisions all AWS resources and auto-generates the root `.env` file containing resource ARNs and bucket IDs).*
-
-### 3. Run Unit Tests Locally
-```bash
+### 3. Run Verification Tests
+```powershell
 python -m pytest tests/test_handler.py -v
 ```
 
-### 4. Upload Data & Run SageMaker Pipeline
-Upload raw data to S3 (EventBridge will auto-trigger the training pipeline, or you can run the pipeline directly):
+### 4. Upload Data & Execute Pipeline
 ```powershell
-# Upload raw data
-.\scripts\upload_data.ps1        # or: bash scripts/upload_data.sh
+# Upload dataset (triggers SageMaker DAG automatically via EventBridge)
+.\scripts\upload_data.ps1
 
-# Run pipeline directly
-.\scripts\run_pipeline.ps1       # or: bash scripts/run_pipeline.sh
+# Or trigger pipeline manually
+.\scripts\run_pipeline.ps1
 ```
 
-### 5. Approve Model & Run Batch Transform
-1. Once the training pipeline completes, go to **AWS Console $\rightarrow$ SageMaker $\rightarrow$ Model Registry $\rightarrow$ `fraudguard-model-group`**.
-2. Select the new model version $\rightarrow$ **Update approval status** $\rightarrow$ Set to **`Approved`**.
-3. Run the batch transform job (auto-discovers latest preprocessed dataset from S3):
+### 5. Run Batch Transform & Inspect Live Console
 ```powershell
+# 1. Run batch inference against approved model version
 .\scripts\run_batch_transform.ps1 -Wait
-```
 
-### 6. Verify Results in DynamoDB
-When batch transform finishes, scored predictions land in `s3://$bucket/inference-output/`:
-1. EventBridge triggers `fraudguard-explainability-dev`.
-2. Lambda filters high-risk transactions (`fraud_score > 0.9`).
-3. Amazon Bedrock (Claude 3 Haiku) generates plain-English fraud risk summaries.
-4. Results are stored in DynamoDB table `fraudguard-flagged-transactions-dev`.
+# 2. Launch operations dashboard
+.\scripts\run_dashboard.ps1
+```
 
 ---
 
-## Scripts Reference
+## 📊 Evaluation & Validation Metrics
 
-| Script (PowerShell) | Script (Bash) | Purpose |
-|---|---|---|
-| `scripts/upload_data.ps1` | `scripts/upload_data.sh` | Uploads local raw dataset to S3 bucket configured in `.env`. |
-| `scripts/run_pipeline.ps1` | `scripts/run_pipeline.sh` | Submits and starts the SageMaker training pipeline DAG. |
-| `scripts/run_batch_transform.ps1` | `scripts/run_batch_transform.sh` | Fetches the latest approved model from Model Registry and runs batch inference. |
-| `scripts/deploy_lambda.ps1` | `scripts/deploy_lambda.sh` | Packages and updates the Lambda function code without re-running Terraform. |
+* **Dataset:** IEEE-CIS Fraud Detection Benchmark (590,540 raw transactions)
+* **Features:** 64 engineered features (Aggregates, Interaction terms, Velocity counts, Email risk bucketing)
+* **Model:** XGBoost Classifier with `scale_pos_weight=27.6`
+* **Test Performance:**
+  * **Test AUC-PR:** `0.4208` *(Gating Condition: `>= 0.35`)*
+  * **Test ROC-AUC:** `0.8754`
+  * **High-Risk Threshold (`> 0.90`):** Precision `69.5%`, Recall `28.8%`
+* **Live Batch Validation:** 88,581 inferences scored $\rightarrow$ 1,271 fraud alerts flagged $\rightarrow$ Bedrock explanations persisted to DynamoDB.
 
-## Why This Project
+---
 
-Most public fraud-detection repos stop at a notebook with an AUC score. FraudGuard is built to answer the questions an interviewer actually asks: What happens at 1M transactions/day? What's your idle-cost story? Why Terraform over CloudFormation? Why batch over real-time? Every component here exists because of a specific tradeoff, documented and defensible.
+## 📑 In-Depth Documentation
 
-## License
+* 📄 [**Production Gap & Industrial Standard Audit**](docs/PRODUCTION_GAP_AUDIT.md) — Forensic code review, enterprise benchmark (vs. Stripe Radar / PayPal), and 10-step remediation roadmap.
+* 📊 [**AWS Architecture Presentation Deck (.pptx)**](docs/FraudGuard_Architecture_Diagram.pptx) — 16:9 dark-mode presentation deck.
+* 📄 [**AWS Architecture Blueprint (.pdf)**](docs/FraudGuard_Architecture_Diagram.pdf) — Architectural specification sheet.
 
-MIT
+---
+
+## 📜 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

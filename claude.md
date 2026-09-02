@@ -1,35 +1,19 @@
-# FraudGuard ML — Project Context
+# FraudGuard — AI Assistant Context
 
-## What this is
-Production-grade AWS fraud detection pipeline. Portfolio + LinkedIn piece. Not toy code.
+## Overview
+Production-style AWS fraud detection pipeline combining SageMaker MLOps, XGBoost batch scoring, Amazon Bedrock (Claude 3 Haiku) natural language explainability, and DynamoDB persistence, fully provisioned with modular Terraform.
 
-## Stack
-- XGBoost binary classifier, SageMaker Pipelines (train/eval/register)
-- Batch transform inference (NOT real-time endpoint) — cost control
-- Bedrock Claude Haiku — explainability, fraud-positive txns ONLY
-- EventBridge — fires on fraud-positive inference event
-- Lambda (Python 3.12) — receives event, calls Bedrock, writes DynamoDB
-- DynamoDB — txn_id, fraud_score, explanation, features, timestamp
-- S3 — raw data, processed splits, model artifacts, batch output
-- Terraform — IaC, modular
+## Technology Stack
+- **Machine Learning:** XGBoost Classifier, SageMaker Pipelines (Preprocess → Train → Evaluate → Register)
+- **Batch Inference:** SageMaker Batch Transform (`ml.m5.xlarge`) with ephemeral teardown
+- **Generative AI:** Amazon Bedrock (Claude 3 Haiku) via Anthropic Messages API (invoked on `score > 0.90` only)
+- **Compute & Routing:** AWS Lambda (Python 3.12), Amazon EventBridge (prefix-filtered rules)
+- **Data & Persistence:** Amazon S3 (AES-256), Amazon DynamoDB (`PAY_PER_REQUEST`)
+- **Infrastructure as Code:** Terraform (`s3`, `iam`, `dynamodb`, `eventbridge`, `lambda`, `sagemaker`)
+- **Operations Console:** Local triage server (`dashboard/server.py` on port 8080) and web UI
 
-## Terraform structure
-Root module → calls 6 child modules: s3, dynamodb, iam, lambda, eventbridge, sagemaker.
-- SageMaker pipeline itself = Python SDK, NOT Terraform. TF only manages Model Package Group + IAM roles.
-- `aws_lambda_permission` for EventBridge → lives in root `main.tf`, NOT lambda module. Avoids circular dep.
-- Destroy-target pattern: kill SageMaker resources post-training to avoid idle cost.
-
-## Cost rules (non-negotiable)
-- Haiku called ONLY on fraud=positive. Never on clean txns.
-- No real-time SageMaker endpoints. Batch transform only.
-- Selective `terraform destroy -target=` for expensive resources.
-
-## Response rules for Claude Code / Claude in this repo
-- Caveman/ultra-terse. Code-first. No prose padding.
-- No unsolicited boilerplate, no placeholders unless infra genuinely not provisioned.
-- Don't re-explain stack — assume context above is known.
-- No unsolicited suggestions unless asked.
-- Full working code when asked, not stubs.
-
-## Status (update as you go)
-See `/todo` — currently: Terraform scaffold + data sourcing phase. Feature list unfinalized. Haiku prompt unfinalized. No AWS resources provisioned yet.
+## Architectural Principles
+1. **Cost Control:** Bedrock is called exclusively on high-risk fraud cases (>0.90); clean transactions (98.5%+) bypass LLM and database writes ($0.00 spend).
+2. **Ephemeral Compute:** Batch transform instances spin up on demand and terminate immediately post-inference.
+3. **Decoupled Serverless:** EventBridge decouples S3 storage from the SageMaker DAG and downstream Lambda explainability.
+4. **Least-Privilege Security:** Separate IAM roles with minimal scoped permissions for SageMaker, EventBridge, and Lambda.
