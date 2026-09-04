@@ -14,11 +14,14 @@ This document outlines the system architecture, component contracts, IAM least-p
 | **MLOps Pipeline DAG** | Amazon SageMaker Pipelines | Automated preprocessing, XGBoost training, evaluation, and conditional model registration. |
 | **Model Registry** | SageMaker Model Registry | Versioned model artifact repository (`fraudguard-model-group`) with approval gating. |
 | **Batch Inference** | SageMaker Batch Transform | High-throughput offline batch scoring on ephemeral `ml.m5.xlarge` instances. |
+| **Real-Time Endpoint** | SageMaker Serverless Inference | Zero-idle-cost auto-scaling real-time XGBoost inference endpoint with TreeSHAP explanations. |
+| **Public Ingestion API**| Amazon HTTP API Gateway (v2) | Managed public HTTPS entrypoint (`POST /v1/predict`) with CORS and sub-millisecond proxy routing. |
+| **Real-Time Orchestrator**| AWS Lambda (Python 3.12) | Synchronously invokes SageMaker endpoint, evaluates risk threshold, triggers Bedrock, and logs to DynamoDB. |
 | **Event Routing** | Amazon EventBridge | Decoupled event routing filtering on S3 prefixes (`raw/` and `inference-output/`). |
 | **Explainability Handler** | AWS Lambda (Python 3.12) | Streams scored CSV, filters high-risk records (`fraud_score > 0.90`), formats features, calls Bedrock. |
 | **Generative AI** | Amazon Bedrock (Claude 3 Haiku) | Generates structured plain-English root-cause explanations for fraud operations teams. |
 | **Persistence Store** | Amazon DynamoDB | On-demand table storing flagged transaction IDs, fraud scores, LLM explanations, and UTC timestamps. |
-| **Operations Console** | Local Web UI / Server | Real-time triage console with search, filtering, and forensic dossier inspection. |
+| **Operations Console** | Local Web UI / Server | Real-time triage console with search, filtering, and interactive real-time endpoint testing modal. |
 | **Infrastructure as Code** | Terraform (v1.5+) | Modular cloud provisioning with zero manual console dependencies. |
 
 ---
@@ -57,9 +60,54 @@ This document outlines the system architecture, component contracts, IAM least-p
     "txn_id": "3492498",
     "fraud_score": 0.9595,
     "explanation": "Transaction 3492498 was flagged with critical fraud score 0.96. Key risk indicators include high-value transaction executed during off-peak hours...",
+    "source": "realtime",
     "timestamp": "2026-08-30T10:49:52.101537+00:00"
   }
   ```
+
+### 2.5 API Gateway / Client ──► Real-Time Lambda (`POST /v1/predict`)
+* **Entrypoint:** `https://{api-id}.execute-api.us-east-1.amazonaws.com/v1/predict` (or Lambda direct invoke)
+* **Request Schema:**
+  ```json
+  {
+    "txn_id": "TXN-RT-94810",
+    "features": {
+      "TransactionAmt": 850.0,
+      "ProductCD": "W",
+      "card4": "visa",
+      "card6": "credit",
+      "hour_of_day": 3.0,
+      "P_emaildomain": "protonmail.com",
+      "V189": 5.0,
+      "V201": 4.0,
+      "V258": 4.0,
+      "D2": 1.0
+    },
+    "include_explanation": true
+  }
+  ```
+* **Response Schema:**
+  ```json
+  {
+    "txn_id": "TXN-RT-94810",
+    "fraud_score": 0.9421,
+    "decision": "DECLINE",
+    "threshold": 0.90,
+    "explanation": "Transaction TXN-RT-94810 was flagged with critical fraud score 0.94...",
+    "source": "realtime",
+    "latency_ms": {
+      "ml_inference": 48.2,
+      "bedrock_explainability": 346.8,
+      "total": 395.0
+    },
+    "timestamp": "2026-09-04T17:07:48.008880+00:00"
+  }
+  ```
+
+### 2.6 Real-Time Lambda ──► SageMaker Serverless Endpoint
+* **Endpoint Name:** `fraudguard-realtime-endpoint-dev`
+* **Protocol:** `invoke_endpoint(ContentType="application/json")`
+* **Features:** 64-feature vector with automatic categorical domain mapping (`EMAIL_BUCKET_MAP`), feature median imputation, and TreeSHAP calculation.
 
 ---
 
@@ -98,6 +146,8 @@ infra/terraform/
     ├── iam/                 # Least-privilege roles for SageMaker, EventBridge, and Lambda
     ├── dynamodb/            # On-demand DynamoDB table for fraud alerts
     ├── eventbridge/         # S3 event matching rules & pipeline/Lambda targets
-    ├── lambda/              # Python 3.12 Lambda function & CloudWatch log group
-    └── sagemaker/           # SageMaker Model Package Group & registry configuration
+    ├── lambda/              # Python 3.12 Lambda function (Batch explainability & Real-Time API)
+    ├── sagemaker/           # SageMaker Model Package Group & registry configuration
+    ├── sagemaker_endpoint/  # SageMaker Serverless Inference Endpoint & Configuration
+    └── api_gateway/         # HTTP API Gateway (v2) with CORS & proxy routing
 ```

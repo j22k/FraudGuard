@@ -12,47 +12,58 @@ FraudGuard is an event-driven, serverless machine learning operations (MLOps) pi
 
 ---
 
-## System Architecture
+## 🏛️ System Architecture
 
 ![FraudGuard AWS Architecture](docs/img/AWS-services-fraud-guard.gif)
 
-### Data & Execution Flow
+### Dual Inference Architecture: Offline Batch & Real-Time Serverless
 ```
-1. Ingestion       ──► S3 Bucket (s3://{bucket}/raw/)
-                         │ (ObjectCreated Notification)
-                         ▼
-2. MLOps DAG       ──► Amazon EventBridge ──► SageMaker Pipeline Execution
-                         │ ├─ Preprocess (64-feature transformation & time-split)
-                         │ ├─ Train (XGBoost with class imbalance weighting)
-                         │ ├─ Evaluate (AUC-PR & ROC-AUC metric calculation)
-                         │ └─ Quality Gate (AUC-PR >= 0.35) ──► Model Registry
-                         ▼
-3. Batch Scoring   ──► Ephemeral SageMaker Batch Transform (ml.m5.xlarge)
-                         │ Outputs scored predictions to S3
-                         ▼
-4. Event Routing   ──► EventBridge Rule (inference-output/ prefix filter)
-                         │ Invokes AWS Lambda Handler
-                         ▼
-5. Gated GenAI     ──► AWS Lambda (Threshold Filter: score > 0.90)
-                         │ ├─ Clean Txns (<= 0.90): Zero Bedrock invocation ($0.00)
-                         │ └─ Fraud Txns (> 0.90): Amazon Bedrock (Claude 3 Haiku)
-                         ▼
-6. Persistence     ──► Amazon DynamoDB (fraudguard-flagged-transactions-dev)
-                         │ Stores: txn_id, fraud_score, Bedrock explanation, UTC timestamp
-                         ▼
-7. Security Node   ──► Live Forensic Operations Console (http://localhost:8080)
+                           [ DATA INGESTION & TRAINING ]
+                                         │
+                   S3 Bucket (raw/) ──► EventBridge Rule
+                                         │
+                           SageMaker MLOps Pipeline DAG
+                  (Preprocess ──► Train ──► Evaluate ──► Quality Gate)
+                                         │
+                            SageMaker Model Registry
+                         (fraudguard-model-group / Approved)
+                                ┬─────────────────┬
+                                │                 │
+       ┌────────────────────────┘                 └────────────────────────┐
+       ▼                                                                   ▼
+[ PIPELINE 1: BATCH TRANSFORM ]                       [ PIPELINE 2: REAL-TIME SERVERLESS ]
+       │                                                                   │
+SageMaker Batch Transform (ml.m5.xlarge)              Client / Dashboard / Webhook
+       │ (Scored predictions to S3)                                        │ (HTTPS POST /v1/predict)
+       ▼                                                                   ▼
+EventBridge S3 Rule (inference-output/)                       Amazon HTTP API Gateway (v2)
+       │                                                                   │ (Proxy Integration)
+       ▼                                                                   ▼
+AWS Lambda (Batch Streamer)                           AWS Lambda (Real-Time Orchestrator)
+       │                                                                   │
+       │ (Filter: score > 0.90)                                            ├─► SageMaker Serverless Endpoint
+       ▼                                                                   │   (Auto-scaled XGBoost + TreeSHAP)
+Amazon Bedrock (Claude 3 Haiku)                                            │
+       │ (Plain-English root cause)                                        ├─► Amazon Bedrock (Claude 3 Haiku)
+       ▼                                                                   │   (On-demand explainability)
+Amazon DynamoDB (flagged transactions) ◄───────────────────────────────────┘
+       │
+       ▼
+Forensic Operations Console (http://localhost:8080)
 ```
 
 ---
 
-##  Key Design Decisions & Cost Architecture
+## 💡 Key Design Decisions & Cost Architecture
 
 | Design Decision | Implementation | Production Rationale |
 |---|---|---|
+| **Dual Inference Engine** | SageMaker Batch Transform for high-volume backtesting + SageMaker Serverless Endpoint for low-latency live transactions. | Gives enterprise flexibility: bulk offline throughput alongside synchronous sub-second API scoring. |
+| **Serverless Real-Time Endpoint** | SageMaker Serverless Inference (`MemorySizeInMB = 2048`, `MaxConcurrency = 5`). | Scales dynamically from 0 to 5 workers with **$0 idle EC2 cost** when traffic drops to zero. |
 | **Gated LLM Invocations** | Bedrock Claude 3 Haiku is invoked **only** on fraud-positive transactions (`score > 0.90`). | Keeps GenAI API costs near zero at scale ($0 spend on 98.5%+ clean traffic). |
-| **Ephemeral Batch Inference** | SageMaker Batch Transform over 24/7 Real-Time Endpoints. | Eliminates idle EC2 endpoint compute costs (~$150+/month); instances terminate immediately post-job. |
+| **Public API Gateway Proxy** | Amazon HTTP API Gateway (v2) with CORS and route `POST /v1/predict`. | Secure, low-latency, rate-limited public HTTP ingress without exposing internal Lambda ARNs. |
 | **Event-Driven Decoupling** | Amazon EventBridge routes events from S3 to SageMaker and Lambda. | Eliminates polling loops and tightly couples services with native AWS retry semantics. |
-| **Fully Modular IaC** | 100% codified via Terraform (`s3`, `iam`, `dynamodb`, `eventbridge`, `lambda`, `sagemaker`). | Guarantees deterministic cloud deployments and eliminates configuration drift. |
+| **Fully Modular IaC** | 100% codified via Terraform (`s3`, `iam`, `dynamodb`, `eventbridge`, `lambda`, `sagemaker`, `sagemaker_endpoint`, `api_gateway`). | Guarantees deterministic cloud deployments and eliminates configuration drift. |
 | **Least-Privilege Security** | Distinct IAM roles for SageMaker, EventBridge, and Lambda. | Zero cross-service credential sharing or wildcard permissions. |
 
 ---
@@ -71,26 +82,28 @@ Inspect live flagged transactions, forensic dossiers, anomaly distributions, and
 
 ---
 
-##  Repository Structure
+## 📁 Repository Structure
 
 ```
 FraudGuard/
 ├── ml/                      # Machine Learning & SageMaker Pipeline DAG
 │   ├── preprocess.py        # 64-feature transformation & time-based split
 │   ├── train.py             # Local XGBoost training with scale_pos_weight
+│   ├── inference.py         # SageMaker serving hooks (model_fn, predict_fn, TreeSHAP)
 │   ├── sagemaker_pipeline.py# SageMaker DAG (Process -> Train -> Eval -> Register)
 │   ├── batch_transform.py   # Batch transform runner against approved model
-│   └── model_artifacts/     # Serialized model definitions & feature registry
+│   └── model_artifacts/     # Serialized model definitions & feature defaults
 ├── lambda/                  # Serverless Explainability Layer
 │   ├── handler.py           # EventBridge S3 parser & DynamoDB batch writer
+│   ├── realtime_handler.py  # Real-time API Gateway / Lambda synchronous orchestrator
 │   └── bedrock_client.py    # Anthropic Messages API client for Claude 3 Haiku
 ├── infra/terraform/         # Modular Infrastructure as Code (IaC)
 │   ├── main.tf              # Root module wiring & Lambda permissions
-│   ├── modules/             # s3, iam, dynamodb, eventbridge, lambda, sagemaker
+│   ├── modules/             # s3, iam, dynamodb, eventbridge, lambda, sagemaker, sagemaker_endpoint, api_gateway
 │   └── outputs.tf           # Auto-generates root .env configuration
 ├── dashboard/               # Security Forensic Node & Web UI
-│   ├── server.py            # Local HTTP server streaming live DynamoDB items
-│   └── web/                 # Frontend console (HTML5, Tailwind CSS, Lucide icons)
+│   ├── server.py            # Local HTTP server streaming live DynamoDB & proxying real-time scoring
+│   └── web/                 # Frontend console (HTML5, Tailwind CSS, Lucide icons, Real-Time Modal)
 ├── scripts/                 # Cross-platform execution automation (PowerShell / Bash)
 │   ├── upload_data.ps1      # S3 dataset upload
 │   ├── run_pipeline.ps1     # SageMaker pipeline trigger
@@ -99,8 +112,11 @@ FraudGuard/
 │   └── run_dashboard.ps1    # Local ops dashboard server
 ├── tests/                   # Test Automation
 │   ├── test_handler.py      # Unit tests with mocked AWS services
+│   ├── test_realtime_handler.py # Real-time scoring & Bedrock orchestrator unit tests
 │   └── test_adversarial_challenger_1.py # Adversarial & boundary condition test suite
 └── docs/                    # Technical Documentation & Diagrams
+    ├── ARCHITECTURE.md      # Detailed interface contracts & IAM matrices
+    ├── AWS-fraud-guard.drawio # Complete AWS cloud architecture diagram (Draw.io / Diagrams.net)
     ├── PRODUCTION_GAP_AUDIT.md # Industrial benchmark & production audit
     ├── FraudGuard_Architecture_Diagram.pdf # PDF Architecture Blueprint
     └── FraudGuard_Architecture_Diagram.pptx # Slide Presentation Deck (16:9 Dark)
@@ -143,7 +159,7 @@ cd ../..
 
 ### 3. Run Verification Tests
 ```powershell
-python -m pytest tests/test_handler.py -v
+python -m pytest tests/test_handler.py tests/test_realtime_handler.py -v
 ```
 
 ### 4. Upload Data & Execute Pipeline
@@ -155,14 +171,15 @@ python -m pytest tests/test_handler.py -v
 .\scripts\run_pipeline.ps1
 ```
 
-### 5. Run Batch Transform & Inspect Live Console
+### 5. Run Inferences & Inspect Live Console
 ```powershell
-# 1. Run batch inference against approved model version
+# 1. Offline Batch Transform against approved model
 .\scripts\run_batch_transform.ps1 -Wait
 
-# 2. Launch operations dashboard
+# 2. Launch live operations dashboard & real-time testing console
 .\scripts\run_dashboard.ps1
 ```
+*In the web console at `http://localhost:8080`, click **`⚡ TEST REAL-TIME ENDPOINT`** to test synchronous sub-second scoring, TreeSHAP features, and Bedrock Claude 3 Haiku risk narratives.*
 
 ---
 
