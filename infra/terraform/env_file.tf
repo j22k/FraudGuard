@@ -11,6 +11,9 @@ resource "local_file" "env_file" {
     "FRAUDGUARD_MODEL_PACKAGE_GROUP=${module.sagemaker.model_package_group_name}",
     "LAMBDA_EXECUTION_ROLE_ARN=${module.iam.lambda_execution_role_arn}",
     "LAMBDA_FUNCTION_NAME=${module.lambda.function_name}",
+    "REALTIME_LAMBDA_FUNCTION_NAME=${var.enable_realtime_endpoint ? module.realtime_lambda[0].function_name : ""}",
+    "REALTIME_ENDPOINT_URL=${var.enable_realtime_endpoint ? module.realtime_lambda[0].function_url : ""}",
+    "API_GATEWAY_URL=${var.enable_realtime_endpoint ? module.api_gateway[0].api_endpoint_url : ""}",
     "FRAUD_SCORE_THRESHOLD=${var.fraud_score_threshold}",
     "",
   ])

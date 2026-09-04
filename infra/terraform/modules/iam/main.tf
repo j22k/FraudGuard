@@ -258,6 +258,15 @@ data "aws_iam_policy_document" "lambda_policy_doc" {
       "${var.s3_bucket_arn}/*"
     ]
   }
+
+  statement {
+    sid    = "SageMakerEndpointInvoke"
+    effect = "Allow"
+    actions = [
+      "sagemaker:InvokeEndpoint"
+    ]
+    resources = ["arn:aws:sagemaker:*:*:endpoint/*"]
+  }
 }
 
 resource "aws_iam_policy" "lambda_policy" {

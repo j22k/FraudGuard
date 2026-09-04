@@ -42,3 +42,22 @@ variable "tags" {
     ManagedBy = "Terraform"
   }
 }
+
+variable "enable_realtime_endpoint" {
+  type        = bool
+  description = "Whether to provision the SageMaker real-time endpoint and API Gateway"
+  default     = true
+}
+
+variable "approved_model_package_arn" {
+  type        = string
+  description = "ARN of approved ModelPackage in the Model Registry"
+  default     = "arn:aws:sagemaker:us-east-1:646467290351:model-package/fraudguard-model-group/2"
+}
+
+variable "realtime_serverless_enabled" {
+  type        = bool
+  description = "Whether to deploy as Serverless Endpoint (scales to 0, $0 idle)"
+  default     = true
+}
+

@@ -42,3 +42,22 @@ variable "tags" {
   description = "Resource tags"
   default     = {}
 }
+
+variable "handler" {
+  type        = string
+  description = "Lambda handler entrypoint"
+  default     = "handler.handler"
+}
+
+variable "extra_env_vars" {
+  type        = map(string)
+  description = "Additional environment variables"
+  default     = {}
+}
+
+variable "enable_function_url" {
+  type        = bool
+  description = "Whether to create a public HTTPS Function URL with CORS"
+  default     = false
+}
+

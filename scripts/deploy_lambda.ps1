@@ -100,33 +100,39 @@ if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
 
-# 4. Check if Lambda function exists in AWS
-Write-Host "Checking if Lambda function '$FunctionName' exists in AWS ($Region)..." -ForegroundColor Cyan
-$FunctionExists = $false
-try {
-    $null = aws lambda get-function --function-name $FunctionName --region $Region 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $FunctionExists = $true
+# 4. Check and update Lambda functions in AWS
+$RealtimeFunctionName = if ($env:REALTIME_LAMBDA_FUNCTION_NAME) { $env:REALTIME_LAMBDA_FUNCTION_NAME } else { "fraudguard-realtime-api-dev" }
+$FunctionsToCheck = @($FunctionName, $RealtimeFunctionName) | Where-Object { $_ } | Select-Object -Unique
+
+foreach ($fn in $FunctionsToCheck) {
+    Write-Host "Checking if Lambda function '$fn' exists in AWS ($Region)..." -ForegroundColor Cyan
+    $fnExists = $false
+    try {
+        $null = aws lambda get-function --function-name $fn --region $Region 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            $fnExists = $true
+        }
+    } catch {
+        $fnExists = $false
     }
-} catch {
-    $FunctionExists = $false
+
+    if ($fnExists) {
+        Write-Host "Updating Lambda function code for '$fn'..." -ForegroundColor Cyan
+        aws lambda update-function-code `
+            --function-name $fn `
+            --s3-bucket $Bucket `
+            --s3-key $S3ZipKey `
+            --region $Region | Out-Null
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Failed to update Lambda function '$fn'. AWS CLI exited with code $LASTEXITCODE."
+            exit $LASTEXITCODE
+        }
+        Write-Host "  -> Lambda function '$fn' updated successfully." -ForegroundColor Green
+    } else {
+        Write-Host "  -> Lambda function '$fn' does not exist yet (run 'terraform apply' to create)." -ForegroundColor Yellow
+    }
 }
 
-if ($FunctionExists) {
-    Write-Host "Updating Lambda function code for '$FunctionName'..." -ForegroundColor Cyan
-    aws lambda update-function-code `
-        --function-name $FunctionName `
-        --s3-bucket $Bucket `
-        --s3-key $S3ZipKey `
-        --region $Region | Out-Null
+Write-Host "`n[+] Lambda deployment routine complete!" -ForegroundColor Green
 
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to update Lambda function code. AWS CLI exited with code $LASTEXITCODE."
-        exit $LASTEXITCODE
-    }
-    Write-Host "Lambda function '$FunctionName' updated successfully." -ForegroundColor Green
-} else {
-    Write-Host "Lambda function '$FunctionName' does not exist yet." -ForegroundColor Yellow
-    Write-Host "Zip package uploaded to S3. Run 'terraform apply' in infra/terraform/ to create the Lambda function." -ForegroundColor Yellow
-    exit 0
-}

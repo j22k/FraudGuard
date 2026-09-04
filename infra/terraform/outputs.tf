@@ -47,3 +47,20 @@ output "lambda_function_arn" {
   value       = module.lambda.function_arn
   description = "ARN of the Lambda explainability function"
 }
+
+output "realtime_endpoint_name" {
+  value       = var.enable_realtime_endpoint ? module.sagemaker_endpoint[0].endpoint_name : ""
+  description = "Name of the SageMaker real-time endpoint"
+}
+
+output "realtime_endpoint_url" {
+  value       = var.enable_realtime_endpoint ? module.realtime_lambda[0].function_url : ""
+  description = "Public HTTPS Function URL for real-time fraud predictions"
+}
+
+output "api_gateway_url" {
+  value       = var.enable_realtime_endpoint ? module.api_gateway[0].api_endpoint_url : ""
+  description = "Base invocation URL for HTTP API Gateway"
+}
+
+

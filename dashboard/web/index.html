@@ -48,6 +48,11 @@
           />
         </div>
 
+        <button id="btnOpenRealtimeModal" class="btn-realtime-trigger">
+          <i data-lucide="zap" class="w-4 h-4"></i>
+          <span>TEST REAL-TIME ENDPOINT</span>
+        </button>
+
         <!-- Hidden elements needed for app.js status binding -->
         <span id="tableStatusText" style="display:none;">DYNAMODB</span>
         <button id="btnSync" style="display:none;"><i id="syncIcon"></i></button>
@@ -205,6 +210,174 @@
 
     </div>
 
+  </div>
+
+  <!-- ================= REAL-TIME INFERENCE SIMULATOR MODAL ================= -->
+  <div id="realtimeModal" class="modal-overlay" style="display: none;">
+    <div class="modal-container">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <i data-lucide="zap" class="text-teal-700 w-5 h-5"></i>
+          <span class="modal-title">REAL-TIME INFERENCE & BEDROCK EXPLAINABILITY SANDBOX</span>
+          <span class="chip chip-pos" style="font-size: 10px;">SUB-SECOND SLA</span>
+        </div>
+        <button id="btnCloseRealtimeModal" class="btn-close-modal">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        
+        <!-- PRESET BAR -->
+        <div class="preset-strip">
+          <span class="preset-label">LOAD TEST PRESET:</span>
+          <button type="button" class="btn-preset active" data-preset="suspicious_night">
+            🚨 High Risk: $2,850 @ 03:00 (ProtonMail)
+          </button>
+          <button type="button" class="btn-preset" data-preset="velocity_takeover">
+            🚨 Velocity Spike: $4,200 (Mail.com)
+          </button>
+          <button type="button" class="btn-preset" data-preset="legitimate_retail">
+            🛡️ Legitimate: $34.50 @ 14:00 (Gmail)
+          </button>
+        </div>
+
+        <!-- TWO COLUMN INPUT / OUTPUT WORKSPACE -->
+        <div class="modal-grid">
+          
+          <!-- LEFT: TRANSACTION FORM -->
+          <div class="modal-form-pane">
+            <div class="pane-subtitle">TRANSACTION PARAMETERS</div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label for="rtTxnId">Transaction ID</label>
+                <input type="text" id="rtTxnId" class="form-input font-mono" value="TXN-RT-78491" />
+              </div>
+              <div class="form-group">
+                <label for="rtAmt">Amount ($ USD)</label>
+                <input type="number" id="rtAmt" class="form-input font-mono" value="2850.00" step="0.01" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="rtProduct">Product CD</label>
+                <select id="rtProduct" class="form-select">
+                  <option value="W" selected>W (Web E-Commerce)</option>
+                  <option value="C">C (Credit Risk / Payment)</option>
+                  <option value="H">H (High Value Transfer)</option>
+                  <option value="R">R (Recurring)</option>
+                  <option value="S">S (Service)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="rtCard4">Card Network</label>
+                <select id="rtCard4" class="form-select">
+                  <option value="visa" selected>Visa</option>
+                  <option value="mastercard">Mastercard</option>
+                  <option value="discover">Discover</option>
+                  <option value="american express">American Express</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="rtCard6">Card Type</label>
+                <select id="rtCard6" class="form-select">
+                  <option value="credit" selected>Credit</option>
+                  <option value="debit">Debit</option>
+                  <option value="charge card">Charge Card</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="rtHour">Hour of Day (UTC 0-23)</label>
+                <input type="number" id="rtHour" class="form-input font-mono" value="3" min="0" max="23" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="rtEmail">P_emaildomain</label>
+              <input type="text" id="rtEmail" class="form-input font-mono" value="protonmail.com" />
+            </div>
+
+            <div class="form-actions">
+              <button id="btnRunRealtimeInference" class="btn-execute-realtime">
+                <i data-lucide="zap" class="w-4 h-4"></i>
+                <span id="btnRunText">RUN REAL-TIME INFERENCE & EXPLAIN</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- RIGHT: LIVE REAL-TIME RESPONSE -->
+          <div class="modal-results-pane">
+            <div class="pane-subtitle">REAL-TIME INFERENCE RESPONSE</div>
+
+            <div id="rtEmptyState" class="rt-empty-state">
+              <i data-lucide="activity" class="w-8 h-8 text-slate-400"></i>
+              <p>Click <strong>"RUN REAL-TIME INFERENCE & EXPLAIN"</strong> to execute live model scoring and generate a Bedrock Claude 3 narrative.</p>
+            </div>
+
+            <div id="rtResultContent" style="display: none;">
+              <!-- HERO SCORE -->
+              <div class="rt-score-card">
+                <div class="rt-score-meta">
+                  <span class="rt-score-label">CALCULATED FRAUD SCORE</span>
+                  <div class="rt-score-value-row">
+                    <span id="rtScoreDisplay" class="rt-score-number font-mono">0.9621</span>
+                    <span id="rtDecisionBadge" class="chip chip-neg">DECLINE</span>
+                  </div>
+                </div>
+                <!-- LATENCY TELEMETRY -->
+                <div class="rt-latency-box">
+                  <div class="latency-stat">
+                    <span class="latency-lbl">ML SCORING:</span>
+                    <span id="rtMlLatency" class="latency-val font-mono">18.4 ms</span>
+                  </div>
+                  <div class="latency-stat">
+                    <span class="latency-lbl">BEDROCK CLAUDE:</span>
+                    <span id="rtBedrockLatency" class="latency-val font-mono">421.0 ms</span>
+                  </div>
+                  <div class="latency-stat highlight">
+                    <span class="latency-lbl">ROUNDTRIP:</span>
+                    <span id="rtTotalLatency" class="latency-val font-mono">442.2 ms</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BEDROCK NATURAL LANGUAGE EXPLANATION -->
+              <div class="ai-box" style="margin-top: 14px;">
+                <div class="ai-box-header">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5 text-teal-600"></i>
+                  <span>AMAZON BEDROCK // CLAUDE 3 HAIKU REAL-TIME NARRATIVE</span>
+                </div>
+                <p id="rtExplanationText" class="ai-box-text">
+                  Waiting for response...
+                </p>
+              </div>
+
+              <!-- TOP RISK DRIVERS -->
+              <div class="meta-box" style="margin-top: 12px;">
+                <div class="meta-box-title">TOP CONTRIBUTING RISK DRIVERS (TREESHAP)</div>
+                <div id="rtRiskFactorsList" class="risk-factors-grid">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+
+              <div class="rt-persisted-note">
+                <i data-lucide="check-circle" class="w-3.5 h-3.5 text-teal-700"></i>
+                <span>Recorded to DynamoDB with <code>source: "realtime"</code>. Refreshing live queue...</span>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
   </div>
 
   <!-- Application Logic -->
