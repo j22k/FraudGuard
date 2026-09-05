@@ -68,17 +68,21 @@ Forensic Operations Console (http://localhost:8080)
 
 ---
 
-##  Live Forensic Operations Console
+## 🖥️ Live Forensic Operations Console & Real-Time Sandbox
 
-Inspect live flagged transactions, forensic dossiers, anomaly distributions, and Bedrock root-cause narratives:
+Inspect live flagged transactions, forensic dossiers, anomaly distributions, and Bedrock root-cause narratives, or test synchronous sub-second endpoint scoring interactively:
 
+### Live Investigation Queue & Dossier
 ![FraudGuard Live Ops Console](docs/img/web.png)
 
+### Real-Time Inference & Bedrock Explainability Sandbox
+![FraudGuard Real-Time Inference Modal](docs/img/real-time-web.png)
+
 ```powershell
-# Launch local operations console
+# Launch local operations console & interactive sandbox
 .\scripts\run_dashboard.ps1
 ```
-*Accessible at `http://localhost:8080` (auto-syncs with live DynamoDB alerts).*
+*Accessible at `http://localhost:8080` (auto-syncs with live DynamoDB alerts & allows testing cloud real-time predictions).*
 
 ---
 
