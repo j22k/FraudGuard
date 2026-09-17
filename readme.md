@@ -16,6 +16,8 @@ FraudGuard is an event-driven, serverless machine learning operations (MLOps) pi
 
 ![FraudGuard AWS Architecture](docs/img/AWS-services-fraud-guard.gif)
 
+![FraudGuard AWS Architecture](docs/img/diagram.png)
+
 ### Dual Inference Architecture: Offline Batch & Real-Time Serverless
 ```
                            [ DATA INGESTION & TRAINING ]
